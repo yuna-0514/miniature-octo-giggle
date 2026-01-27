@@ -1,0 +1,280 @@
+import React, { useState, useEffect } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
+import { getFirestore, collection, addDoc, onSnapshot, query, doc } from 'firebase/firestore';
+
+// Firebase 全域配置
+const firebaseConfig = JSON.parse(__firebase_config);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'cosmic-quiz-v5';
+
+const questions = [
+  { q: "在星際社交場合中，你傾向於？", a: "主動與多個星系建立連結 (E)", b: "待在熟悉的引力軌道內 (I)" },
+  { q: "面對突發的變故，你的靈魂直覺是？", a: "燃燒熱情引領群體 (E)", b: "冷靜分析最佳出口 (I)" },
+  { q: "如何恢復你的心靈能量？", a: "前往熱鬧的恆星市場 (E)", b: "回到靜謐的個人行星 (I)" },
+  { q: "面對未知任務，你的反應是？", a: "立刻發射啟動信號 (E)", b: "校對航圖數據再出發 (I)" },
+  { q: "對於成為焦點，你的感受是？", a: "獲得能量充滿感 (E)", b: "感到信號被干擾 (I)" },
+  { q: "情緒表達方式接近哪種？", a: "超新星爆發 (E)", b: "星雲緩慢流轉 (I)" },
+  { q: "群體協作時，你傾向？", a: "擔任波動主導者 (E)", b: "擔任穩定支援者 (I)" },
+  { q: "聚會結束後的靜默感？", a: "感到枯竭渴望再連線 (E)", b: "感到極度舒適回歸本質 (I)" },
+  { q: "對陌生人的本能看法？", a: "潛在的新連結 (E)", b: "需解析的未知碼 (I)" },
+  { q: "你的生命節奏聽起來像？", a: "激昂的交響樂 (E)", b: "悠遠的背景音 (I)" },
+  { q: "喜歡的工作模式？", a: "多線程即時互動 (E)", b: "單線程沈浸開發 (I)" },
+  { q: "情緒受壓時，你會？", a: "對外尋求信號傾訴 (E)", b: "關閉傳輸自行消化 (I)" },
+  { q: "外人的第一眼觀測印象？", a: "熱情洋溢 (E)", b: "神祕沈穩 (I)" },
+  { q: "對於「冒險」的定義？", a: "擴張版圖的必要 (E)", b: "增加風險的變量 (I)" },
+  { q: "團隊任務站位？", a: "船頭領航 (E)", b: "操控導航 (I)" },
+  { q: "做決定主要依據？", a: "直覺與反饋 (E)", b: "邏輯與準則 (I)" },
+  { q: "偏好的生命體驗？", a: "邊做邊想 (E)", b: "三思後行 (I)" },
+  { q: "分享生活點滴時？", a: "這是一種能量流動 (E)", b: "這是一種能量消耗 (I)" },
+  { q: "靈魂的理想狀態？", a: "融合與廣大 (E)", b: "獨立與深邃 (I)" },
+  { q: "要把你比作一個現象？", a: "恆星輻射 (E)", b: "中子星引力 (I)" }
+];
+
+export default function App() {
+  const [view, setView] = useState('start');
+  const [user, setUser] = useState(null);
+  const [name, setName] = useState('');
+  const [currentQ, setCurrentQ] = useState(0);
+  const [scoreE, setScoreE] = useState(0);
+  const [logs, setLogs] = useState([]);
+  const [adminKey, setAdminKey] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  // 初始化 Firebase Auth
+  useEffect(() => {
+    const initAuth = async () => {
+      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+        await signInWithCustomToken(auth, __initial_auth_token);
+      } else {
+        await signInAnonymously(auth);
+      }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return () => unsubscribe();
+  }, []);
+
+  // 監聽雲端資料 (僅管理員畫面觸發)
+  useEffect(() => {
+    if (!user || view !== 'adminBoard') return;
+    const publicCollection = collection(db, 'artifacts', appId, 'public', 'data', 'quizLogs');
+    const unsubscribe = onSnapshot(publicCollection, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setLogs(data.sort((a, b) => b.timestamp - a.timestamp));
+    }, (error) => console.error("Firestore Error:", error));
+    return () => unsubscribe();
+  }, [user, view]);
+
+  const handleStart = () => {
+    if (!name.trim()) return;
+    if (name === "access::void::99") {
+      setView('adminAuth');
+      return;
+    }
+    setView('quiz');
+  };
+
+  const handleAnswer = (p) => {
+    const nextScore = scoreE + p;
+    setScoreE(nextScore);
+    if (currentQ + 1 < questions.length) {
+      setCurrentQ(currentQ + 1);
+    } else {
+      saveAndFinish(nextScore);
+    }
+  };
+
+  const saveAndFinish = async (finalScore) => {
+    setIsSaving(true);
+    const isE = finalScore >= 11;
+    const resultType = isE ? "E型 (恆星)" : "I型 (中子星)";
+    try {
+      if (user) {
+        const publicCollection = collection(db, 'artifacts', appId, 'public', 'data', 'quizLogs');
+        await addDoc(publicCollection, {
+          name: name,
+          result: resultType,
+          timestamp: Date.now(),
+          score: finalScore
+        });
+      }
+    } catch (e) {
+      console.error("雲端存儲失敗:", e);
+    }
+    setIsSaving(false);
+    setView('result');
+  };
+
+  const isE = scoreE >= 11;
+
+  return (
+    <div className="min-h-screen bg-[#05070a] text-white font-sans flex items-center justify-center p-4 relative overflow-hidden">
+      {/* 宇宙背景特效 */}
+      <div className="absolute inset-0 opacity-20 pointer-events-none">
+        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_50%,#4834d4_0%,transparent_70%)]" />
+      </div>
+      
+      <div className="w-full max-w-xl z-10">
+        
+        {/* 開始畫面 */}
+        {view === 'start' && (
+          <div className="bg-white/5 backdrop-blur-2xl border border-white/10 p-12 rounded-[40px] text-center shadow-2xl">
+            <div className="text-5xl mb-8 animate-pulse text-indigo-400">✧</div>
+            <h1 className="text-4xl font-bold tracking-[0.3em] mb-4">星域原質</h1>
+            <p className="text-[10px] tracking-[0.5em] text-gray-500 uppercase mb-12">靈魂頻率與雲端共鳴觀測儀</p>
+            <input 
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="輸入靈魂代碼"
+              className="w-full bg-transparent border-b border-gray-800 py-3 text-center text-2xl mb-12 focus:outline-none focus:border-indigo-500 transition-all placeholder:text-gray-800"
+            />
+            <button 
+              onClick={handleStart}
+              className="w-full py-5 rounded-full font-bold tracking-[0.2em] bg-indigo-600 hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-500/20"
+            >
+              開啟觀測
+            </button>
+          </div>
+        )}
+
+        {/* 測驗中 */}
+        {view === 'quiz' && (
+          <div className="bg-white/5 backdrop-blur-2xl border border-white/10 p-8 rounded-[40px]">
+            <div className="flex justify-between items-center mb-10">
+              <div className="w-full h-1 bg-gray-900 rounded-full mr-4 overflow-hidden">
+                <div 
+                  className="h-full bg-indigo-500 transition-all duration-300" 
+                  style={{ width: `${((currentQ + 1) / 20) * 100}%` }}
+                />
+              </div>
+              <span className="text-[10px] font-mono text-gray-500">{String(currentQ + 1).padStart(2, '0')}/20</span>
+            </div>
+            <h2 className="text-xl leading-relaxed mb-12 min-h-[6rem]">{questions[currentQ].q}</h2>
+            <div className="space-y-4">
+              <button onClick={() => handleAnswer(1)} className="w-full p-5 bg-white/5 border border-white/5 rounded-2xl text-left text-sm hover:border-indigo-500/50 transition-all hover:bg-white/10">
+                {questions[currentQ].a}
+              </button>
+              <button onClick={() => handleAnswer(0)} className="w-full p-5 bg-white/5 border border-white/5 rounded-2xl text-left text-sm hover:border-indigo-500/50 transition-all hover:bg-white/10">
+                {questions[currentQ].b}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 觀測結果報告 */}
+        {view === 'result' && (
+          <div className="bg-white/5 backdrop-blur-2xl border border-white/10 p-8 rounded-[40px]">
+            {isSaving ? (
+              <div className="py-20 text-center animate-pulse tracking-widest text-indigo-400">正在將靈魂數據同步至雲端星圖...</div>
+            ) : (
+              <>
+                <div className="text-center mb-10 pb-6 border-b border-white/5">
+                  <h2 className="text-3xl mb-2 tracking-widest font-serif">{name}</h2>
+                  <p className="text-xs font-bold text-yellow-500 tracking-[0.3em] uppercase">
+                    {isE ? "超大質量恆星 (Big Fire E)" : "中子星引力核心 (Void I)"}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 mb-10">
+                  <div className="p-5 bg-white/5 rounded-2xl border border-white/5">
+                    <h4 className="text-indigo-300 text-xs font-bold mb-2 flex items-center uppercase tracking-wider">
+                      <span className="mr-2 text-base">✦</span> 友情共振
+                    </h4>
+                    <p className="text-xs text-gray-400 leading-relaxed">
+                      {isE ? "你是群體中的引力中心，熱情能驅散周圍的寒冷，擁有極廣的社交光譜。" : "你追求質重於量的共振。一旦進入你的引力圈，便是一生穩定的靈魂連結。"}
+                    </p>
+                  </div>
+                  <div className="p-5 bg-white/5 rounded-2xl border border-white/5">
+                    <h4 className="text-rose-400 text-xs font-bold mb-2 flex items-center uppercase tracking-wider">
+                      <span className="mr-2 text-base">♥</span> 愛情極光
+                    </h4>
+                    <p className="text-xs text-gray-400 leading-relaxed">
+                      {isE ? "愛如超新星爆發般熱烈，追求絕對的同步。你需要一個能與你一起燃燒、共同探索宇宙的伴侶。" : "愛是沈穩的暗物質引力。不需要言語，在靜謐中與對方的頻率合而為一，就是你最嚮往的浪漫。"}
+                    </p>
+                  </div>
+                  <div className="p-5 bg-white/5 rounded-2xl border border-white/5">
+                    <h4 className="text-emerald-400 text-xs font-bold mb-2 flex items-center uppercase tracking-wider">
+                      <span className="mr-2 text-base">⚓</span> 血脈重力 (親情)
+                    </h4>
+                    <p className="text-xs text-gray-400 leading-relaxed">
+                      {isE ? "家庭中的太陽，總是主動負責與規劃。你是家人最溫暖的能量源，但記得偶爾也要學會被照耀。" : "你是家人最安心的後盾。雖然不常釋放明顯的熱度，但你的存在就是家庭最穩固的基石。"}
+                    </p>
+                  </div>
+                  <div className="p-5 bg-indigo-900/10 rounded-2xl border border-indigo-500/20">
+                    <h4 className="text-amber-300 text-xs font-bold mb-2 flex items-center uppercase tracking-wider">
+                      <span className="mr-2 text-base">📜</span> 星靈諭旨 (建議)
+                    </h4>
+                    <p className="text-xs text-gray-300 italic leading-relaxed">
+                      {isE ? "「強光有時會掩蓋星塵的細節。學會安靜，你將看見那些隱藏在黑暗中的奇蹟。」" : "「別害怕發射信號。宇宙浩瀚，總有一顆行星正在等待接收你那獨特且精確的波長。」"}
+                    </p>
+                  </div>
+                </div>
+
+                <button onClick={() => window.location.reload()} className="w-full text-center text-[10px] text-gray-600 hover:text-white transition-all uppercase tracking-widest">
+                  重啟系統觀測 / REBOOT SYSTEM
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* 管理員驗證 */}
+        {view === 'adminAuth' && (
+          <div className="bg-white/5 backdrop-blur-2xl border border-white/10 p-12 rounded-[40px] text-center">
+            <h2 className="text-xl mb-8 text-red-500 tracking-widest uppercase font-serif">Security Protocol</h2>
+            <input 
+              type="password"
+              value={adminKey}
+              onChange={(e) => setAdminKey(e.target.value)}
+              placeholder="輸入存取金鑰"
+              className="w-full bg-gray-900 border border-gray-800 p-4 rounded-xl text-white mb-8 text-center focus:outline-none"
+            />
+            <button 
+              onClick={() => adminKey === "admin123" ? setView('adminBoard') : alert("驗證失敗")}
+              className="w-full py-4 bg-red-900/20 text-red-500 rounded-xl border border-red-900/50 hover:bg-red-900/40 transition-all"
+            >
+              執行驗證
+            </button>
+          </div>
+        )}
+
+        {/* 管理員雲端看板 */}
+        {view === 'adminBoard' && (
+          <div className="bg-white/5 backdrop-blur-2xl border border-white/10 p-8 rounded-[40px]">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-lg text-indigo-400 font-serif">雲端觀測日誌</h2>
+              <button onClick={() => setView('start')} className="text-[10px] text-gray-500 border border-gray-800 px-3 py-1 rounded hover:text-white transition-all">EXIT</button>
+            </div>
+            <div className="max-h-96 overflow-y-auto pr-2 custom-scrollbar">
+              <table className="w-full text-[10px] text-gray-400">
+                <thead className="text-left border-b border-white/10 text-indigo-300/50 uppercase">
+                  <tr>
+                    <th className="py-3">時間</th>
+                    <th>觀測代碼</th>
+                    <th className="text-right">原質</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {logs.map((log) => (
+                    <tr key={log.id} className="border-b border-white/5 hover:bg-white/10 transition-colors">
+                      <td className="py-3 text-gray-600">{new Date(log.timestamp).toLocaleDateString()}</td>
+                      <td className="text-indigo-300 font-bold">{log.name}</td>
+                      <td className="text-right">{log.result.split(' ')[0]}</td>
+                    </tr>
+                  ))}
+                  {logs.length === 0 && (
+                    <tr><td colSpan="3" className="py-10 text-center text-gray-700 italic text-sm">尚無雲端觀測數據...</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
