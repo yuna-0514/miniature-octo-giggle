@@ -37,7 +37,8 @@
     </div>
 
     <div id="app" class="w-full max-w-xl z-10">
-        <!-- 內容由 JS 動態生成 -->
+        <!-- 初始載入提示 -->
+        <div class="text-center animate-pulse text-indigo-400 tracking-widest">系統啟動中...</div>
     </div>
 
     <!-- Firebase SDK -->
@@ -46,15 +47,43 @@
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
 
-        // Firebase 配置 (由環境提供)
-        const firebaseConfig = JSON.parse(window.__firebase_config || "{}");
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-        const appId = window.__app_id || 'cosmic-quiz-v5';
+        // 全域狀態
+        let state = {
+            view: 'start',
+            name: '',
+            currentQ: 0,
+            scoreE: 0,
+            isSaving: false,
+            user: null,
+            logs: []
+        };
 
-        // --- 重要：已填入您部署的 Google Apps Script 網頁應用程式 URL ---
+        // Firebase 服務實例
+        let db, auth;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'cosmic-quiz-v5';
         const googleSheetUrl = "https://script.google.com/macros/s/AKfycbzsffAQD5mEX_8hXcxLECHzaceLhKlrDQA6RbeFH88LpSicUDIeEh9mJCumyFU3EYYt7A/exec"; 
+
+        // 初始化 Firebase (加入錯誤保護)
+        try {
+            const configText = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
+            const firebaseConfig = JSON.parse(configText);
+            
+            if (firebaseConfig.apiKey) {
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                onAuthStateChanged(auth, (u) => {
+                    if (!u) {
+                        signInAnonymously(auth).catch(e => console.error("Auth Error", e));
+                    } else {
+                        state.user = u;
+                    }
+                });
+            }
+        } catch (e) {
+            console.error("Firebase Initialization Failed:", e);
+        }
 
         // 測驗題目
         const questions = [
@@ -80,18 +109,10 @@
             { q: "要把你比作一個現象？", a: "恆星輻射 (E)", b: "中子星引力 (I)" }
         ];
 
-        let state = {
-            view: 'start',
-            name: '',
-            currentQ: 0,
-            scoreE: 0,
-            isSaving: false,
-            user: null,
-            logs: []
-        };
-
         function render() {
             const container = document.getElementById('app');
+            if (!container) return;
+
             if (state.view === 'start') {
                 container.innerHTML = `
                     <div class="glass p-12 rounded-[40px] text-center shadow-2xl">
@@ -119,11 +140,13 @@
                         </div>
                         <h2 class="text-xl leading-relaxed mb-12 min-h-[6rem] serif">${q.q}</h2>
                         <div class="space-y-4">
-                            <button onclick="handleAnswer(1)" class="w-full p-5 bg-white/5 border border-white/5 rounded-2xl text-left text-sm hover:border-indigo-500/50 transition-all hover:bg-white/10">${q.a}</button>
-                            <button onclick="handleAnswer(0)" class="w-full p-5 bg-white/5 border border-white/5 rounded-2xl text-left text-sm hover:border-indigo-500/50 transition-all hover:bg-white/10">${q.b}</button>
+                            <button id="ansA" class="w-full p-5 bg-white/5 border border-white/5 rounded-2xl text-left text-sm hover:border-indigo-500/50 transition-all hover:bg-white/10">${q.a}</button>
+                            <button id="ansB" class="w-full p-5 bg-white/5 border border-white/5 rounded-2xl text-left text-sm hover:border-indigo-500/50 transition-all hover:bg-white/10">${q.b}</button>
                         </div>
                     </div>
                 `;
+                document.getElementById('ansA').onclick = () => handleAnswer(1);
+                document.getElementById('ansB').onclick = () => handleAnswer(0);
             } else if (state.view === 'result') {
                 const isE = state.scoreE >= 11;
                 container.innerHTML = `
@@ -148,12 +171,14 @@
                                     </p>
                                 </div>
                             </div>
-                            <button onclick="location.reload()" class="w-full text-center text-[10px] text-gray-600 hover:text-white transition-all uppercase tracking-widest">
+                            <button id="rebootBtn" class="w-full text-center text-[10px] text-gray-600 hover:text-white transition-all uppercase tracking-widest">
                                 重啟系統觀測 / REBOOT SYSTEM
                             </button>
                         `}
                     </div>
                 `;
+                const btn = document.getElementById('rebootBtn');
+                if (btn) btn.onclick = () => location.reload();
             } else if (state.view === 'adminAuth') {
                 container.innerHTML = `
                     <div class="glass p-12 rounded-[40px] text-center">
@@ -174,7 +199,7 @@
                     <div class="glass p-8 rounded-[40px]">
                         <div class="flex justify-between items-center mb-6">
                             <h2 class="text-lg text-indigo-400 serif">雲端觀測日誌</h2>
-                            <button onclick="location.reload()" class="text-[10px] text-gray-500 border border-gray-800 px-3 py-1 rounded hover:text-white transition-all">EXIT</button>
+                            <button id="exitAdmin" class="text-[10px] text-gray-500 border border-gray-800 px-3 py-1 rounded hover:text-white transition-all">EXIT</button>
                         </div>
                         <div class="max-h-96 overflow-y-auto pr-2 custom-scrollbar">
                             <table class="w-full text-[10px] text-gray-400 text-left">
@@ -194,6 +219,7 @@
                         </div>
                     </div>
                 `;
+                document.getElementById('exitAdmin').onclick = () => location.reload();
             }
         }
 
@@ -210,13 +236,13 @@
             render();
         }
 
-        window.handleAnswer = (p) => {
+        function handleAnswer(p) {
             state.scoreE += p;
             if (state.currentQ + 1 < questions.length) {
                 state.currentQ++;
                 render();
             } else { finishQuiz(); }
-        };
+        }
 
         async function finishQuiz() {
             state.view = 'result';
@@ -232,11 +258,13 @@
                 timestamp: Date.now()
             };
 
-            // 1. 同步到 Firebase (為了網頁管理員後台)
-            try {
-                const col = collection(db, 'artifacts', appId, 'public', 'data', 'quizLogs');
-                await addDoc(col, payload);
-            } catch (e) { console.error("Firebase Sync Error", e); }
+            // 1. 同步到 Firebase (如果有初始化成功)
+            if (db) {
+                try {
+                    const col = collection(db, 'artifacts', appId, 'public', 'data', 'quizLogs');
+                    await addDoc(col, payload);
+                } catch (e) { console.error("Firebase Sync Error", e); }
+            }
 
             // 2. 同步到 Google 試算表
             if (googleSheetUrl) {
@@ -255,14 +283,15 @@
         }
 
         function startAdminListener() {
+            if (!db) return;
             const col = collection(db, 'artifacts', appId, 'public', 'data', 'quizLogs');
             onSnapshot(col, (snap) => {
                 state.logs = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b)=>b.timestamp - a.timestamp);
                 render();
-            });
+            }, (err) => console.error("Admin Listener Error", err));
         }
 
-        onAuthStateChanged(auth, (u) => { if (!u) signInAnonymously(auth); });
+        // 啟動渲染
         render();
     </script>
 </body>
