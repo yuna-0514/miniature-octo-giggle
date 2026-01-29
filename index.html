@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>星域原質：雲端共鳴觀測儀</title>
+    <title>靈魂頻率：生活性格觀測儀</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;700&family=Noto+Sans+TC:wght@300;400;700&display=swap" rel="stylesheet">
     <style>
@@ -54,16 +54,17 @@
             currentQ: 0,
             scoreE: 0,
             isSaving: false,
+            feedbackSent: false,
             user: null,
             logs: []
         };
 
         // Firebase 服務實例
         let db, auth;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'cosmic-quiz-v5';
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'cosmic-quiz-v6';
         const googleSheetUrl = "https://script.google.com/macros/s/AKfycbzsffAQD5mEX_8hXcxLECHzaceLhKlrDQA6RbeFH88LpSicUDIeEh9mJCumyFU3EYYt7A/exec"; 
 
-        // 初始化 Firebase (加入錯誤保護)
+        // 初始化 Firebase
         try {
             const configText = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
             const firebaseConfig = JSON.parse(configText);
@@ -85,28 +86,28 @@
             console.error("Firebase Initialization Failed:", e);
         }
 
-        // 測驗題目
+        // 題目改為白話、易懂的二選一
         const questions = [
-            { q: "在星際社交場合中，你傾向於？", a: "主動與多個星系建立連結 (E)", b: "待在熟悉的引力軌道內 (I)" },
-            { q: "面對突發的變故，你的靈魂直覺是？", a: "燃燒熱情引領群體 (E)", b: "冷靜分析最佳出口 (I)" },
-            { q: "如何恢復你的心靈能量？", a: "前往熱鬧的恆星市場 (E)", b: "回到靜謐的個人行星 (I)" },
-            { q: "面對未知任務，你的反應是？", a: "立刻發射啟動信號 (E)", b: "校對航圖數據再出發 (I)" },
-            { q: "對於成為焦點，你的感受是？", a: "獲得能量充滿感 (E)", b: "感到信號被干擾 (I)" },
-            { q: "情緒表達方式接近哪種？", a: "超新星爆發 (E)", b: "星雲緩慢流轉 (I)" },
-            { q: "群體協作時，你傾向？", a: "擔任波動主導者 (E)", b: "擔任穩定支援者 (I)" },
-            { q: "聚會結束後的靜默感？", a: "感到枯竭渴望再連線 (E)", b: "感到極度舒適回歸本質 (I)" },
-            { q: "對陌生人的本能看法？", a: "潛在的新連結 (E)", b: "需解析的未知碼 (I)" },
-            { q: "你的生命節奏聽起來像？", a: "激昂的交響樂 (E)", b: "悠遠的背景音 (I)" },
-            { q: "喜歡的工作模式？", a: "多線程即時互動 (E)", b: "單線程沈浸開發 (I)" },
-            { q: "情緒受壓時，你會？", a: "對外尋求信號傾訴 (E)", b: "關閉傳輸自行消化 (I)" },
-            { q: "外人的第一眼觀測印象？", a: "熱情洋溢 (E)", b: "神祕沈穩 (I)" },
-            { q: "對於「冒險」的定義？", a: "擴張版圖的必要 (E)", b: "增加風險的變量 (I)" },
-            { q: "團隊任務站位？", a: "船頭領航 (E)", b: "操控導航 (I)" },
-            { q: "做決定主要依據？", a: "直覺與反饋 (E)", b: "邏輯與準則 (I)" },
-            { q: "偏好的生命體驗？", a: "邊做邊想 (E)", b: "三思後行 (I)" },
-            { q: "分享生活點滴時？", a: "這是一種能量流動 (E)", b: "這是一種能量消耗 (I)" },
-            { q: "靈魂的理想狀態？", a: "融合與廣大 (E)", b: "獨立與深邃 (I)" },
-            { q: "要把你比作一個現象？", a: "恆星輻射 (E)", b: "中子星引力 (I)" }
+            { q: "在週末，你通常比較喜歡哪種活動？", a: "跟一群朋友出去聚會或慶祝", b: "待在家看書、看電影或自己靜一靜" },
+            { q: "到了一個新環境（如新班級或公司），你會？", a: "主動找身邊的人聊天，認識新朋友", b: "先安靜觀察，等別人來跟你說話" },
+            { q: "當你心情不好時，哪種方式讓你覺得比較放鬆？", a: "找人說說話，把壓力發洩出來", b: "獨自思考，讓情緒慢慢沈澱" },
+            { q: "朋友通常怎麼形容你？", a: "熱情、愛說話、活潑開朗", b: "沈穩、話不多、安靜內向" },
+            { q: "在開會或分組討論時，你通常是？", a: "主動發表意見並引導話題", b: "多數時間都在聽，想清楚後才發言" },
+            { q: "你比較喜歡哪種工作環境？", a: "可以隨時與同事互動、溝通的熱鬧環境", b: "能讓自己專注、不受打擾的安靜空間" },
+            { q: "去參加聚會後，你的感覺是？", a: "覺得精神百倍，整個人都活過來了", b: "雖然很開心，但覺得社交完好累，想趕快回家" },
+            { q: "對於「成為大家的焦點」，你的想法是？", a: "並不介意，甚至覺得滿自在的", b: "感到不太自在，想盡快退到後方" },
+            { q: "你比較容易記住別人的？", a: "長相與他當時說過的有趣笑話", b: "他給人的整體感覺或細節特質" },
+            { q: "你做決定時，通常依賴？", a: "當下的直覺或大家的共識", b: "自己的邏輯分析或過去的經驗" },
+            { q: "當你獨處太久時，你會？", a: "覺得無聊，很想傳訊息找人聊天", b: "覺得非常充實，很享受這段時光" },
+            { q: "在陌生人的社交場合中，你會？", a: "很快就能跟人打成一片", b: "會比較害羞，需要比較多時間適應" },
+            { q: "你喜歡的生活節奏是？", a: "充滿變化，每天都有新事物發生", b: "規律穩定，一切都在掌握之中" },
+            { q: "跟人說話時，你通常？", a: "邊想邊說，想到什麼就說什麼", b: "在腦袋裡過濾一遍後才說出來" },
+            { q: "遇到困難時，你的第一反應是？", a: "趕快找人商量，聽聽別人的看法", b: "自己先想辦法解決，不行的話再求救" },
+            { q: "你比較受不了？", a: "一整天都沒有人可以說話", b: "一整天都在跟人說話，沒有私人空間" },
+            { q: "當你在專注工作時，有人來找你聊天？", a: "沒關係，正好可以休息一下", b: "覺得很煩，打斷了我的思路" },
+            { q: "你喜歡的運動類型？", a: "籃球、足球等團體性的競賽運動", b: "慢跑、重訓、游泳等個人的運動" },
+            { q: "對於分享自己的私生活？", a: "很樂意在社群平台分享", b: "非常低調，只有少數好友才知道" },
+            { q: "你覺得自己更像？", a: "充滿能量的太陽，溫暖周圍", b: "深邃的海洋，內心平靜但豐富" }
         ];
 
         function render() {
@@ -117,12 +118,12 @@
                 container.innerHTML = `
                     <div class="glass p-12 rounded-[40px] text-center shadow-2xl">
                         <div class="text-5xl mb-8 animate-pulse-slow text-indigo-400">✧</div>
-                        <h1 class="text-4xl font-bold tracking-[0.3em] mb-4 serif">星域原質</h1>
-                        <p class="text-[10px] tracking-[0.5em] text-gray-500 uppercase mb-12">靈魂頻率與雲端同步系統</p>
-                        <input id="nameInput" value="${state.name}" placeholder="輸入靈魂代碼" 
-                            class="w-full bg-transparent border-b border-gray-800 py-3 text-center text-2xl mb-12 focus:outline-none focus:border-indigo-500 transition-all placeholder:text-gray-800">
+                        <h1 class="text-3xl font-bold tracking-[0.2em] mb-4 serif">性格原質觀測儀</h1>
+                        <p class="text-[12px] tracking-[0.3em] text-gray-400 uppercase mb-12">探尋你的靈魂頻率與本質</p>
+                        <input id="nameInput" value="${state.name}" placeholder="請輸入您的暱稱" 
+                            class="w-full bg-transparent border-b border-gray-800 py-3 text-center text-xl mb-12 focus:outline-none focus:border-indigo-500 transition-all placeholder:text-gray-700">
                         <button id="startBtn" class="w-full py-5 rounded-full font-bold tracking-[0.2em] bg-indigo-600 hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-500/20">
-                            開啟觀測
+                            開始分析
                         </button>
                     </div>
                 `;
@@ -140,8 +141,8 @@
                         </div>
                         <h2 class="text-xl leading-relaxed mb-12 min-h-[6rem] serif">${q.q}</h2>
                         <div class="space-y-4">
-                            <button id="ansA" class="w-full p-5 bg-white/5 border border-white/5 rounded-2xl text-left text-sm hover:border-indigo-500/50 transition-all hover:bg-white/10">${q.a}</button>
-                            <button id="ansB" class="w-full p-5 bg-white/5 border border-white/5 rounded-2xl text-left text-sm hover:border-indigo-500/50 transition-all hover:bg-white/10">${q.b}</button>
+                            <button id="ansA" class="w-full p-5 bg-white/5 border border-white/5 rounded-2xl text-left text-base hover:border-indigo-500/50 transition-all hover:bg-white/10">${q.a}</button>
+                            <button id="ansB" class="w-full p-5 bg-white/5 border border-white/5 rounded-2xl text-left text-base hover:border-indigo-500/50 transition-all hover:bg-white/10">${q.b}</button>
                         </div>
                     </div>
                 `;
@@ -150,29 +151,46 @@
             } else if (state.view === 'result') {
                 const isE = state.scoreE >= 11;
                 container.innerHTML = `
-                    <div class="glass p-8 rounded-[40px]">
+                    <div class="glass p-8 rounded-[40px] max-h-[85vh] overflow-y-auto custom-scrollbar">
                         ${state.isSaving ? `
-                            <div class="py-20 text-center animate-pulse tracking-widest text-indigo-400">正在同步靈魂數據至星圖與試算表...</div>
+                            <div class="py-20 text-center animate-pulse tracking-widest text-indigo-400">正在生成深度分析報告...</div>
                         ` : `
-                            <div class="text-center mb-10 pb-6 border-b border-white/5">
-                                <h2 class="text-3xl mb-2 tracking-widest serif">${state.name}</h2>
-                                <p class="text-xs font-bold text-yellow-500 tracking-[0.3em] uppercase">
-                                    ${isE ? "超大質量恆星 (Big Fire E)" : "中子星引力核心 (Void I)"}
+                            <div class="text-center mb-8 pb-4 border-b border-white/5">
+                                <h2 class="text-2xl mb-2 tracking-widest serif">${state.name}</h2>
+                                <p class="text-sm font-bold text-indigo-400 tracking-[0.2em] uppercase">
+                                    觀測結果：${isE ? "外向能量主導 (E)" : "內向頻率主導 (I)"}
                                 </p>
                             </div>
-                            <div class="grid grid-cols-1 gap-4 mb-10">
-                                ${renderResultCard("友情共振", "✦", "text-indigo-300", isE ? "你是群體中的引力中心，熱情能驅散周圍的寒冷。" : "你追求質重於量的共振，一旦連結便是跨越時空的重力連結。")}
-                                ${renderResultCard("愛情極光", "♥", "text-rose-400", isE ? "愛如超新星爆發熱烈，追求絕對同步。" : "愛是沈穩的引力。在靜謐中與對方頻率合一，就是你的浪漫。")}
-                                ${renderResultCard("血脈重力", "⚓", "text-emerald-400", isE ? "家庭中的太陽，主動負責與規劃。" : "家庭最安心的後盾，你的存在就是穩固基石。")}
-                                <div class="p-5 bg-indigo-900/10 rounded-2xl border border-indigo-500/20">
-                                    <h4 class="text-amber-300 text-xs font-bold mb-2 flex items-center uppercase tracking-wider"><span class="mr-2 text-base">📜</span> 星靈諭旨</h4>
-                                    <p class="text-xs text-gray-300 italic leading-relaxed">
-                                        ${isE ? "「強光有時會掩蓋細節。學會安靜，你將看見隱藏在黑暗中的奇蹟。」" : "「別害怕發射信號。宇宙浩瀚，總有人在等待接收你獨特的波長。」"}
-                                    </p>
+
+                            <div class="space-y-6">
+                                ${renderResultCard("性格特質解析", "🔍", "text-indigo-300", 
+                                    isE ? "你像是一顆恆星，透過與外界的碰撞和連結來產生能量。你熱愛溝通，在人群中能感到自在，並且擅長將熱情傳遞給身邊的人。你對新事物充滿好奇，並勇於踏出舒適圈。" : 
+                                    "你像是一個深邃的星系，透過內心的思考與沈澱來累積能量。你雖然在社交場合可能較為安靜，但你擁有極強的洞察力與豐富的內心世界。你追求深度而非廣度，對信任的人有著極高的忠誠度。")}
+                                
+                                ${renderResultCard("人際關係建議", "🤝", "text-rose-400", 
+                                    isE ? "你的人脈廣泛，但有時會因為太快投入而忽略細節。建議偶爾給自己一段靜默的時間，學習傾聽內心深處的聲音，這會讓你的決策更有力量。" : 
+                                    "你擁有讓人安心的沈穩力量。建議可以試著在安全的環境下主動分享你的想法，宇宙中有很多正在尋求你智慧的人，適度的連結會讓你發現新的契機。")}
+
+                                ${renderResultCard("核心優勢", "⚡", "text-emerald-400", 
+                                    isE ? "極強的溝通協調能力、適應新環境的速度、鼓舞士氣的領導力。" : 
+                                    "敏銳的觀察與分析、專注且深度的思考能力、情緒獨立且穩固。")}
+
+                                <!-- 準確度回饋區 -->
+                                <div class="p-6 bg-indigo-900/10 rounded-2xl border border-indigo-500/20 text-center">
+                                    <h4 class="text-amber-300 text-sm font-bold mb-4 tracking-wider">這次觀測準確嗎？</h4>
+                                    ${state.feedbackSent ? 
+                                        `<p class="text-xs text-indigo-300 italic">感謝您的回饋，系統已收集數據！</p>` :
+                                        `<div class="flex justify-center space-x-4">
+                                            <button onclick="sendFeedback('準確')" class="px-6 py-2 bg-white/5 rounded-full text-xs hover:bg-white/20 transition-all border border-white/10">準確</button>
+                                            <button onclick="sendFeedback('普通')" class="px-6 py-2 bg-white/5 rounded-full text-xs hover:bg-white/20 transition-all border border-white/10">普通</button>
+                                            <button onclick="sendFeedback('不準')" class="px-6 py-2 bg-white/5 rounded-full text-xs hover:bg-white/20 transition-all border border-white/10">不準</button>
+                                        </div>`
+                                    }
                                 </div>
                             </div>
-                            <button id="rebootBtn" class="w-full text-center text-[10px] text-gray-600 hover:text-white transition-all uppercase tracking-widest">
-                                重啟系統觀測 / REBOOT SYSTEM
+
+                            <button id="rebootBtn" class="w-full mt-10 py-4 text-center text-[10px] text-gray-500 border border-gray-800 rounded-full hover:text-white hover:border-white transition-all uppercase tracking-widest">
+                                重新測試 / RESTART
                             </button>
                         `}
                     </div>
@@ -198,20 +216,21 @@
                 container.innerHTML = `
                     <div class="glass p-8 rounded-[40px]">
                         <div class="flex justify-between items-center mb-6">
-                            <h2 class="text-lg text-indigo-400 serif">雲端觀測日誌</h2>
+                            <h2 class="text-lg text-indigo-400 serif">觀測數據總覽</h2>
                             <button id="exitAdmin" class="text-[10px] text-gray-500 border border-gray-800 px-3 py-1 rounded hover:text-white transition-all">EXIT</button>
                         </div>
                         <div class="max-h-96 overflow-y-auto pr-2 custom-scrollbar">
                             <table class="w-full text-[10px] text-gray-400 text-left">
                                 <thead class="border-b border-white/10 text-indigo-300/50 uppercase">
-                                    <tr><th class="py-3">時間</th><th>代碼</th><th class="text-right">類型</th></tr>
+                                    <tr><th class="py-3">代碼</th><th>類型</th><th>準確回饋</th><th class="text-right">時間</th></tr>
                                 </thead>
                                 <tbody>
                                     ${state.logs.map(log => `
                                         <tr class="border-b border-white/5">
-                                            <td class="py-3 text-gray-600">${new Date(log.timestamp).toLocaleDateString()}</td>
-                                            <td class="text-indigo-300 font-bold">${log.name}</td>
-                                            <td class="text-right">${log.result.split(' ')[0]}</td>
+                                            <td class="py-3 text-indigo-300 font-bold">${log.name}</td>
+                                            <td>${log.result}</td>
+                                            <td>${log.accuracy || '--'}</td>
+                                            <td class="text-right text-gray-600">${new Date(log.timestamp).toLocaleDateString()}</td>
                                         </tr>
                                     `).join('')}
                                 </tbody>
@@ -224,15 +243,15 @@
         }
 
         function renderResultCard(title, icon, colorClass, text) {
-            return `<div class="p-5 bg-white/5 rounded-2xl border border-white/5">
-                <h4 class="${colorClass} text-xs font-bold mb-2 flex items-center tracking-wider"><span class="mr-2 text-base">${icon}</span> ${title}</h4>
-                <p class="text-xs text-gray-400 leading-relaxed">${text}</p>
+            return `<div class="p-6 bg-white/5 rounded-2xl border border-white/5">
+                <h4 class="${colorClass} text-sm font-bold mb-3 flex items-center tracking-wider"><span class="mr-2 text-lg">${icon}</span> ${title}</h4>
+                <p class="text-sm text-gray-400 leading-relaxed">${text}</p>
             </div>`;
         }
 
         function handleStart() {
             if (!state.name.trim()) return;
-            state.view = state.name === 'access::void::99' ? 'adminAuth' : 'quiz';
+            state.view = state.name === 'admin::99' ? 'adminAuth' : 'quiz';
             render();
         }
 
@@ -244,29 +263,29 @@
             } else { finishQuiz(); }
         }
 
-        async function finishQuiz() {
-            state.view = 'result';
-            state.isSaving = true;
+        // 全域回饋函數
+        window.sendFeedback = async (level) => {
+            state.feedbackSent = true;
             render();
 
+            // 更新本次測驗的紀錄（加進回饋欄位）
             const isE = state.scoreE >= 11;
-            const resultType = isE ? "E型 (恆星)" : "I型 (中子星)";
             const payload = {
                 name: state.name,
-                result: resultType,
+                result: isE ? "E型" : "I型",
                 score: state.scoreE,
+                accuracy: level,
                 timestamp: Date.now()
             };
 
-            // 1. 同步到 Firebase (如果有初始化成功)
+            // 同步回傳回饋數據
             if (db) {
                 try {
                     const col = collection(db, 'artifacts', appId, 'public', 'data', 'quizLogs');
                     await addDoc(col, payload);
-                } catch (e) { console.error("Firebase Sync Error", e); }
+                } catch (e) {}
             }
 
-            // 2. 同步到 Google 試算表
             if (googleSheetUrl) {
                 try {
                     await fetch(googleSheetUrl, {
@@ -275,7 +294,40 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload)
                     });
-                } catch (e) { console.error("Google Sheet Sync Error", e); }
+                } catch (e) {}
+            }
+        };
+
+        async function finishQuiz() {
+            state.view = 'result';
+            state.isSaving = true;
+            render();
+
+            const isE = state.scoreE >= 11;
+            const payload = {
+                name: state.name,
+                result: isE ? "E型" : "I型",
+                score: state.scoreE,
+                timestamp: Date.now()
+            };
+
+            // 第一次同步：基礎結果
+            if (db) {
+                try {
+                    const col = collection(db, 'artifacts', appId, 'public', 'data', 'quizLogs');
+                    await addDoc(col, payload);
+                } catch (e) {}
+            }
+
+            if (googleSheetUrl) {
+                try {
+                    await fetch(googleSheetUrl, {
+                        method: 'POST',
+                        mode: 'no-cors',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                } catch (e) {}
             }
 
             state.isSaving = false;
@@ -288,10 +340,9 @@
             onSnapshot(col, (snap) => {
                 state.logs = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b)=>b.timestamp - a.timestamp);
                 render();
-            }, (err) => console.error("Admin Listener Error", err));
+            });
         }
 
-        // 啟動渲染
         render();
     </script>
 </body>
