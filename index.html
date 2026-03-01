@@ -46,13 +46,14 @@
         .auth-overlay {
             position: fixed; inset: 0; background: #020408; z-index: 100;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: opacity 0.5s ease;
         }
     </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4 relative">
 
     <div id="auth-guard" class="auth-overlay">
-        <div class="text-indigo-300/60 text-[10px] tracking-[0.5em] font-mono animate-pulse">INITIATING PULSE SCAN...</div>
+        <div id="guard-text" class="text-indigo-300/60 text-[10px] tracking-[0.5em] font-mono animate-pulse">INITIATING PULSE SCAN...</div>
     </div>
 
     <div id="app" class="w-full max-w-4xl z-10 opacity-0 transition-opacity duration-1000"></div>
@@ -62,13 +63,30 @@
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+        // === 配置區域 ===
         const scriptURL = "https://script.google.com/macros/s/AKfycbzsffAQD5mEX_8hXcxLECHzaceLhKlrDQA6RbeFH88LpSicUDIeEh9mJCumyFU3EYYt7A/exec"; 
+        
+        let config;
+        try {
+            // 優先嘗試從環境變數讀取，若在 GitHub 本機執行失敗則需手動填寫
+            config = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+                // 如果你要在 GitHub Pages 運行，請到 Firebase Console 複製你的 Web 配置貼到這裡
+                apiKey: "YOUR_API_KEY",
+                authDomain: "YOUR_PROJECT.firebaseapp.com",
+                projectId: "YOUR_PROJECT_ID",
+                storageBucket: "YOUR_PROJECT.appspot.com",
+                messagingSenderId: "YOUR_ID",
+                appId: "YOUR_APP_ID"
+            };
+        } catch (e) {
+            document.getElementById('guard-text').innerHTML = "CONFIG ERROR: PLEASE CHECK FIREBASE SETTINGS";
+            console.error("Firebase config missing or invalid", e);
+        }
 
-        const firebaseConfig = JSON.parse(__firebase_config);
-        const app = initializeApp(firebaseConfig);
+        const app = initializeApp(config);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'soul-pulse-20';
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'soul-pulse-final';
 
         let state = {
             view: 'start',
@@ -83,34 +101,30 @@
         };
 
         const questions = [
-            // E/I
             { q: "下課十分鐘，你最常出現在哪裡？", dim: "EI", options: [{ text: "在走廊跟朋友串門子聊天", type: "E" }, { text: "待在座位上聽歌或看書", type: "I" }, { text: "揪團去福利社買東西", type: "E" }, { text: "趴在桌上補眠享受安靜", type: "I" }]},
             { q: "班級要舉辦交換禮物，你的心情是？", dim: "EI", options: [{ text: "興奮地想炒熱全場氣氛", type: "E" }, { text: "只想低調抽完禮物就結束", type: "I" }, { text: "期待揭曉禮物時的尖叫聲", type: "E" }, { text: "覺得準備禮物是有點壓力", type: "I" }]},
             { q: "假日在家休息了一天，晚上你會？", dim: "EI", options: [{ text: "想約朋友出去看場電影", type: "E" }, { text: "感到充飽電了，繼續待在家", type: "I" }, { text: "瘋狂滑社群看大家在做什麼", type: "E" }, { text: "沉浸在自己的遊戲或影集裡", type: "I" }]},
-            { q: "在社團討論活動進度時，你通常？", dim: "EI", options: [{ text: "第一個發言並帶動討論", type: "E" }, { text: "先聽大家說，最後才給意見", type: "I" }, { text: "負責到處溝通各組的意見", type: "E" }, { text: "默默在旁邊做會議記錄", type: "I" }]},
+            { q: "在社團討論進度時，你通常？", dim: "EI", options: [{ text: "第一個發言並帶動討論", type: "E" }, { text: "先聽大家說，最後才給意見", type: "I" }, { text: "負責到處溝通各組的意見", type: "E" }, { text: "默默在旁邊做會議記錄", type: "I" }]},
             { q: "關於「畢業旅行」的記憶，你最喜歡？", dim: "EI", options: [{ text: "在晚會上與大家瘋狂跳舞", type: "E" }, { text: "深夜在房間與摯友聊天", type: "I" }, { text: "在遊覽車上搶麥克風唱歌", type: "E" }, { text: "看著窗外風景思考人生", type: "I" }]},
-            // S/N
             { q: "學習一門新課程，你習慣從哪開始？", dim: "SN", options: [{ text: "看具體例題，搞懂公式怎麼套", type: "S" }, { text: "先聽大原理，思考整體的關聯", type: "N" }, { text: "整理精美筆記，記錄所有細節", type: "S" }, { text: "聯想以前學過的內容產生靈感", type: "N" }]},
-            { q: "當朋友描述一件靈異事件，你的反應？", dim: "SN", options: [{ text: "詢問發生的時間地點與細節", type: "S" }, { text: "思考這件事背後的神秘暗示", type: "N" }, { text: "尋求科學解釋或環境因素", type: "S" }, { text: "腦中立刻浮現恐怖電影的畫面", type: "N" }]},
+            { q: "當朋友描述一件靈異事件，你的反應？", dim: "SN", options: [{ text: "詢問發生的時間地點與細節", type: "S" }, { text: "思考這件事背後的神秘暗示", type: "N" }, { text: "尋求科學解釋或環境因素", type: "S" }, { text: "腦中立刻浮現出相關的恐怖電影畫面", type: "N" }]},
             { q: "關於大學科系，你更常思考的是？", dim: "SN", options: [{ text: "未來的薪水與具體錄取門檻", type: "S" }, { text: "這科系是否能改變未來的世界", type: "N" }, { text: "具體的環境、交通與設施", type: "S" }, { text: "該領域未來的發展趨勢與可能", type: "N" }]},
             { q: "你比較喜歡哪種類型的老師？", dim: "SN", options: [{ text: "指令清晰、重點明確的老師", type: "S" }, { text: "教學幽默、會延伸課外知識的老師", type: "N" }, { text: "按部就班執行教學進度的老師", type: "S" }, { text: "鼓勵發問、討論不標準答案的老師", type: "N" }]},
             { q: "進入圖書館，你會被哪類書吸引？", dim: "SN", options: [{ text: "實用工具書（如程式、攝影）", type: "S" }, { text: "科幻小說或探討未來的書籍", type: "N" }, { text: "名人傳記學習具體步驟", type: "S" }, { text: "充滿意象的現代詩集", type: "N" }]},
-            // T/F
             { q: "朋友跟另一半吵架來哭訴，你會？", dim: "TF", options: [{ text: "分析對錯並給出解決建議", type: "T" }, { text: "陪他一起罵，給予情感支持", type: "F" }, { text: "問清楚細節判斷是否有價值", type: "T" }, { text: "先給他一個擁抱或買杯飲料", type: "F" }]},
             { q: "隊友報告進度嚴重落後，你會？", dim: "TF", options: [{ text: "直接要求他準時否則踢出名單", type: "T" }, { text: "私下關心他是否發生了什麼事", type: "F" }, { text: "重新分配任務由自己扛下來", type: "T" }, { text: "為了顧及和諧默默幫他補齊", type: "F" }]},
             { q: "你覺得哪種讚美最能讓你開心？", dim: "TF", options: [{ text: "「你的邏輯真好，這題解得妙」", type: "T" }, { text: "「你真貼心，班上有你真幸運」", type: "F" }, { text: "「這企劃很專業，幾乎沒缺點」", type: "T" }, { text: "「你的穿搭總能展現獨特靈魂」", type: "F" }]},
             { q: "對於「班級公約」，你的態度是？", dim: "TF", options: [{ text: "規則就是規則，違規就該罰", type: "T" }, { text: "規則是死的，應視情況寬容", type: "F" }, { text: "規則要有邏輯，不能亂定", type: "T" }, { text: "規則是為了讓大家相處更愉快", type: "F" }]},
             { q: "看到感人的志工招募影片，你想到？", dim: "TF", options: [{ text: "計算參與的時間成本與效益", type: "T" }, { text: "感到酸楚，立刻想報名幫忙", type: "F" }, { text: "評估這組織運作是否真的有效", type: "T" }, { text: "思考如何喚醒大眾的同理心", type: "F" }]},
-            // J/P
             { q: "如果明天期末考，你今晚的狀態是？", dim: "JP", options: [{ text: "按進度複習完畢，提早睡覺", type: "J" }, { text: "爆發腎上腺素，瘋狂熬夜衝刺", type: "P" }, { text: "確認重點，一切都在掌握中", type: "J" }, { text: "還在糾結要先讀哪一章才好", type: "P" }]},
             { q: "放長假前，你通常會？", dim: "JP", options: [{ text: "寫好詳細計畫表，安排幾點起床", type: "J" }, { text: "只有框架，行程看當天心情決定", type: "P" }, { text: "提前訂好車票，不容許意外", type: "J" }, { text: "喜歡隨興而至，甚至臨時出發", type: "P" }]},
-            { q: "你的書桌通常長什麼樣子？", dim: "JP", options: [{ text: "每個東西都有固定位置，乾淨整齊", type: "J" }, { text: "隨性堆放雜物，但我自己找得到", type: "P" }, { text: "貼滿待辦事項與提醒小紙條", type: "J" }, { text: "充滿興趣小物，亂但很有靈感", type: "P" }]},
+            { q: "你的書桌通常長什麼樣子？", dim: "JP", options: [{ text: "每個東西都有固定位置，乾淨整齊", type: "J" }, { text: "隨性堆放著各種參考書與雜物，但我自己找得到", type: "P" }, { text: "貼滿了待辦事項與提醒小紙條", type: "J" }, { text: "充滿興趣小物，亂但很有靈感", type: "P" }]},
             { q: "面對意外行程被打亂，你的反應？", dim: "JP", options: [{ text: "感到焦慮，不喜歡節奏被亂掉", type: "J" }, { text: "覺得刺激，喜歡驚喜與挑戰", type: "P" }, { text: "迅速制定新計畫，找回掌控感", type: "J" }, { text: "輕鬆適應，覺得原本計畫太死", type: "P" }]},
             { q: "如何完成三千字的期末報告？", dim: "JP", options: [{ text: "每天寫五百字，提早兩天完成", type: "J" }, { text: "先收資料，最後一晚噴發寫完", type: "P" }, { text: "嚴格遵守大綱，確保架構一致", type: "J" }, { text: "邊寫邊改，常有突如其來的新方向", type: "P" }]}
         ];
 
         const zodiacData = {
-            "牡羊座": { core: "純粹的火焰脈衝，你的直覺是宇宙的指南針。", love: "愛情是一場勇敢的冒險，建議放下競爭心，學會溫柔的妥協。", friend: "你是朋友最堅強的後盾，但也要允許自己有軟弱需要保護的時候。", life: "規律運動能釋放你的過剩能量，同時請每天留出10分鐘的靜坐時間。" },
+            "牡羊座": { core: "純粹的火焰脈衝，你的直覺是宇宙的指南針。", love: "愛情是一場勇敢的冒險，建議放下競爭心，學會溫柔的妥協。", friend: "你是朋友最堅強的後盾，但也要允許自己有軟弱需要保護的時候。", life: "規餘運動能釋放你的過剩能量，同時請每天留出10分鐘的靜坐時間。" },
             "金牛座": { core: "穩定的重力中心，世界因你的堅持而有序。", love: "追求安全感並非壞事，但偶爾的一場即興驚喜會讓感情更升溫。", friend: "你是最可靠的聽眾，試著對朋友說出你的擔憂，而非獨自承擔。", life: "打造一個極具感官美學的居家空間，環境的美麗是你精神的食糧。" },
             "雙子座": { core: "多變的星軌跳躍，好奇心是你永恆的燃料。", love: "思想的共鳴比外貌更重要，請找一個能與你徹夜長談的人。", friend: "聚會的發起者，但請記得深入經營一兩個能說真心話的核心好友。", life: "學習新知能讓你保持年輕，建議同時進行兩項不同領域的興趣。" },
             "巨蟹座": { core: "溫柔的防禦屏障，你承載著宇宙的情感水流。", love: "同理心強大，但請記住：先愛自己，你才有能量守護另一半。", friend: "你是朋友圈的膠水，記得設立情緒底線，不要成為別人的情緒垃圾桶。", life: "居家佈置能梳理你的情緒，多接觸自然的水源能幫你洗滌疲憊。" },
@@ -119,25 +133,38 @@
             "天秤座": { core: "優雅的對稱磁場，平衡是你終身的追求。", love: "下定決心展現你的真實立場，別為了迎合對方而迷失了自己的座標。", friend: "你是天生的外交官，但也請勇敢地向消耗你的人說不，節省社交能級。", life: "追求美感是你的天性，一場畫展或是一次精緻的午茶能幫你找回平衡。" },
             "天蠍座": { core: "深邃的靈魂黑洞，你擁有看透表象的洞察力。", love: "信任是唯一的解藥，學會適度地給予對方自由，愛會回饋你更多。", friend: "忠誠度極高，對新的緣分少一點防備，世界上還是有很多善良的人。", life: "深入鑽研一門學問會讓你感到充實，你需要與靈魂對話的靜謐時間。" },
             "射手座": { core: "追逐真理的箭矢，自由是你的生命之火。", love: "自由至上，但請坦誠地與伴侶分享你的冒險計畫，讓他參與你的旅程。", friend: "你是大家的開心果，但也請學會傾聽沉重的部分，展現你的深度。", life: "旅行與跨文化體驗是你的養分，即使只是在城市裡探險也能保持活力。" },
-            "摩羯座": { core: "堅毅的時間建築，你正在建造永恆的基業。", love: "浪漫不是浪費時間，多一點甜言蜜語是讓感情長久運行的潤滑劑。", friend: "值得信賴，但純粹的垃圾話時間也很重要，不要總是在討論公事。", life: "別把人生當成闖關遊戲，停下來看風景並不是懈怠，而是為了走更遠。" },
+            "摩羯座": { core: "堅毅的時間建築，你正在建造永恆的基業。", love: "浪漫不是浪費時間，多一點甜言密語是讓感情長久運行的潤滑劑。", friend: "值得信賴，但純粹的垃圾話時間也很重要，不要總是在討論公事。", life: "別把人生當成闖關遊戲，停下來看風景並不是懈怠，而是為了走更遠。" },
             "水瓶座": { core: "未來的星際波長，你的思維領先時代一光年。", love: "尋找一個理解你「古怪」的靈魂伴侶，不要為了傳統觀念而遷就。", friend: "廣交但不交心是你的習慣，試著展現一次真實的情緒波動給朋友看。", life: "關注最新科技或未來趨勢，與未來保持連結會讓你感受到生命脈動。" },
             "雙魚座": { core: "夢幻的深海回聲，你是感性與靈感的結合體。", love: "建立現實的防禦邊界，不要在愛裡過度自我犧牲，保護你夢幻的心。", friend: "能量容易被干擾，請遠離那些傳遞負能量的人，多跟陽光的人在一起。", life: "藝術、冥想或音樂是你的靈魂棲息地，留點夢境時間給自己。" }
         };
 
         const initAuth = async () => {
-            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                await signInWithCustomToken(auth, __initial_auth_token);
-            } else {
-                await signInAnonymously(auth);
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (err) {
+                console.warn("Auth initial failed, proceeding as guest", err);
+                removeGuard();
             }
+            
             onAuthStateChanged(auth, (user) => {
                 state.user = user;
-                const guard = document.getElementById('auth-guard');
-                if (guard) guard.remove();
-                document.getElementById('app').style.opacity = '1';
+                removeGuard();
                 render();
             });
         };
+
+        function removeGuard() {
+            const guard = document.getElementById('auth-guard');
+            if (guard) {
+                guard.style.opacity = '0';
+                setTimeout(() => guard.remove(), 500);
+            }
+            document.getElementById('app').style.opacity = '1';
+        }
 
         initAuth();
 
@@ -146,15 +173,15 @@
             if (state.view === 'start') {
                 container.innerHTML = `
                     <div class="max-w-md mx-auto glass p-10 rounded-[40px] text-center animate-fade-in">
-                        <h1 class="text-3xl font-bold tracking-[0.1em] mb-4 serif">異星座標</h1>
+                        <h1 class="text-3xl font-bold tracking-[0.1em] mb-4 serif text-white">異星座標</h1>
                         <p class="text-xs text-indigo-300 mb-10 tracking-[0.2em]">靈魂脈衝監測實驗 (20題)</p>
                         <div class="space-y-4">
-                            <input id="uIn" placeholder="輸入觀測帳號" value="${state.username}" class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-center outline-none focus:border-indigo-500 transition-colors">
+                            <input id="uIn" placeholder="輸入觀測帳號" value="${state.username}" class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-center outline-none focus:border-indigo-500 transition-colors text-white">
                             <select id="zIn" class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-center text-gray-400 outline-none focus:border-indigo-500 transition-colors">
                                 <option value="未設定">選擇星座標籤</option>
-                                ${Object.keys(zodiacData).map(z => `<option value="${z}">${z}</option>`).join('')}
+                                ${Object.keys(zodiacData).map(z => `<option value="${z}" ${state.zodiac === z ? 'selected' : ''}>${z}</option>`).join('')}
                             </select>
-                            <button onclick="window.startQuiz()" class="w-full py-5 bg-indigo-600 rounded-2xl font-bold tracking-[0.5em] hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-600/20">開啟監測</button>
+                            <button onclick="window.startQuiz()" class="w-full py-5 bg-indigo-600 rounded-2xl font-bold tracking-[0.5em] hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-600/20 text-white">開啟監測</button>
                         </div>
                     </div>
                 `;
@@ -165,19 +192,19 @@
                 container.innerHTML = `
                     <div class="max-w-2xl mx-auto glass p-10 rounded-[40px] animate-fade-in">
                         <div class="mb-10 text-xl font-bold serif text-indigo-300">${state.currentQ + 1} <span class="text-xs text-gray-600">/ ${questions.length}</span></div>
-                        <h2 class="text-lg mb-10 serif leading-relaxed">${q.q}</h2>
+                        <h2 class="text-lg mb-10 serif leading-relaxed text-white">${q.q}</h2>
                         <div class="space-y-3">
-                            ${q.options.map((opt) => `<button onclick="window.answer('${opt.type}', '${opt.text}')" class="option-btn w-full p-5 bg-white/[0.02] border border-white/5 rounded-2xl text-sm hover:bg-white/[0.06]">${opt.text}</button>`).join('')}
+                            ${q.options.map((opt) => `<button onclick="window.answer('${opt.type}', '${opt.text}')" class="option-btn w-full p-5 bg-white/[0.02] border border-white/5 rounded-2xl text-sm hover:bg-white/[0.06] text-white">${opt.text}</button>`).join('')}
                         </div>
                     </div>
                 `;
             } else if (state.view === 'pre-result') {
                 container.innerHTML = `
                     <div class="max-w-md mx-auto glass p-10 rounded-[40px] text-center animate-fade-in">
-                        <h3 class="text-xl font-bold serif mb-4">監測精準度調查</h3>
+                        <h3 class="text-xl font-bold serif mb-4 text-white">監測精準度調查</h3>
                         <p class="text-xs text-gray-400 mb-8">基於剛才的作答，你認為結果會契合你嗎？</p>
                         <div class="flex justify-center gap-2 mb-10">
-                            ${[1,2,3,4,5].map(v => `<button onclick="window.setAccuracy(${v})" class="w-12 h-12 rounded-xl border border-white/10 hover:bg-indigo-600 transition-all">${v}</button>`).join('')}
+                            ${[1,2,3,4,5].map(v => `<button onclick="window.setAccuracy(${v})" class="w-12 h-12 rounded-xl border border-white/10 hover:bg-indigo-600 transition-all text-white">${v}</button>`).join('')}
                         </div>
                         <p class="text-[10px] text-gray-600 uppercase tracking-widest">Awaiting Pulse Confirmation...</p>
                     </div>
@@ -247,11 +274,13 @@
             };
 
             try {
-                // 1. Firestore
-                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'pulseRecords'), {
-                    ...payload,
-                    timestamp: serverTimestamp()
-                });
+                // 1. Firestore - 加入守護確保有 user 且 db 正常
+                if (auth.currentUser) {
+                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'pulseRecords'), {
+                        ...payload,
+                        timestamp: serverTimestamp()
+                    });
+                }
 
                 // 2. Google Sheets
                 await fetch(scriptURL, {
@@ -265,7 +294,7 @@
                 btn.classList.add('bg-emerald-500', 'text-white');
             } catch (e) {
                 console.error(e);
-                btn.innerText = "同步失敗，請重試";
+                btn.innerText = "同步失敗，但已盡力保存";
                 btn.disabled = false;
                 state.isSaving = false;
             }
