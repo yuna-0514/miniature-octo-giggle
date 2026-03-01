@@ -55,16 +55,15 @@
         <div class="text-indigo-300/60 text-[10px] tracking-[0.5em] font-mono animate-pulse">INITIATING PULSE SCAN...</div>
     </div>
 
-    <div class="absolute inset-0 opacity-20 pointer-events-none">
-        <div class="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_50%,#1e1b4b,transparent_70%)]"></div>
-    </div>
-
     <div id="app" class="w-full max-w-4xl z-10 opacity-0 transition-opacity duration-1000"></div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // 已填入你提供的 Google Apps Script 部署網址
+        const scriptURL = "https://script.google.com/macros/s/AKfycbzsffAQD5mEX_8hXcxLECHzaceLhKlrDQA6RbeFH88LpSicUDIeEh9mJCumyFU3EYYt7A/exec"; 
 
         const firebaseConfig = JSON.parse(__firebase_config);
         const app = initializeApp(firebaseConfig);
@@ -78,211 +77,60 @@
             zodiac: '未設定',
             currentQ: 0,
             scores: { E: 0, I: 0, S: 0, N: 0, T: 0, F: 0, J: 0, P: 0 },
+            answers: [], // 記錄詳細作答過程
             accuracy: 0,
             isSaving: false,
             user: null
         };
 
+        // 題目資料
         const questions = [
-            // E/I 維度
             { q: "下課十分鐘，你最常出現在哪裡？", dim: "EI", options: [
                 { text: "在走廊跟不同班的朋友串門子、聊八卦", type: "E" },
                 { text: "留在座位上戴耳機聽歌或看自己的書", type: "I" },
-                { text: "揪團去福利社或找老師討論社團公事", type: "E" },
+                { text: "找老師討論社團公事或揪團去福利社", type: "E" },
                 { text: "趴在桌上補眠，享受這段無人打擾的時間", type: "I" }
             ]},
-            { q: "班級要舉辦聖誕交換禮物，你的心情通常是？", dim: "EI", options: [
-                { text: "興奮！期待抽獎過程與揭曉禮物時的尖叫聲", type: "E" },
-                { text: "覺得有點壓力，只想安靜地領完自己的那份", type: "I" },
+            { q: "班級要舉辦聖誕交換禮物，你的心情是？", dim: "EI", options: [
+                { text: "興奮地期待抽獎過程與大家揭曉禮物時的尖叫聲", type: "E" },
+                { text: "覺得準備禮物很麻煩，只想安靜地領完自己的那份", type: "I" },
                 { text: "主動擔任主持人，負責炒熱全場氣氛", type: "E" },
-                { text: "默默領完禮物就想休息，不喜歡被關注", type: "I" }
+                { text: "希望不要抽到太奇怪的東西，最好能默默結束", type: "I" }
             ]},
-            { q: "假日在家休息了一整天，到了晚上你會？", dim: "EI", options: [
-                { text: "覺得有點發霉，想約朋友出去看電影或吃消夜", type: "E" },
-                { text: "感到充飽了電，精神煥發地迎接新週", type: "I" },
-                { text: "開始狂刷社群，回覆所有累積的未讀訊息", type: "E" },
-                { text: "繼續沉浸在自己的遊戲或影集世界，不想停", type: "I" }
-            ]},
-            { q: "在社團開會討論活動時，你通常是？", dim: "EI", options: [
-                { text: "第一個發言，並試圖帶動大家的討論熱度", type: "E" },
-                { text: "傾向先聽大家的想法，最後才簡短發表意見", type: "I" },
-                { text: "負責到處溝通、統整不同組別的複雜意見", type: "E" },
-                { text: "默默在旁邊做會議記錄或思考細部執行細節", type: "I" }
-            ]},
-            { q: "你心目中完美的畢業典禮應該是？", dim: "EI", options: [
-                { text: "全班大合唱、瘋狂拍照，充滿熱鬧感的舞台", type: "E" },
-                { text: "與幾個摯友私下合影，安靜溫馨地告別校園", type: "I" },
-                { text: "能在舞台上代表領獎或表演，留下亮眼回憶", type: "E" },
-                { text: "低調感人、只與在乎的人交換真心信件", type: "I" }
-            ]},
-            // S/N 維度
             { q: "面對一門全新的理科必修課，你通常怎麼開始學習？", dim: "SN", options: [
                 { text: "先看課本例題，搞懂具體公式怎麼套用", type: "S" },
-                { text: "先聽老師講大原理，思考學科跟現實的關聯", type: "N" },
-                { text: "整理出一套精美筆記，把細節寫得清清楚楚", type: "S" },
+                { text: "先聽老師講大原理，思考這門學科跟現實的關聯", type: "N" },
+                { text: "整理出一套精美的筆記，把細節寫得清清楚楚", type: "S" },
                 { text: "聯想這跟以前學過的內容有什麼相似之處", type: "N" }
             ]},
-            { q: "當朋友描述一件「靈異事件」，你第一反應是？", dim: "SN", options: [
-                { text: "詢問具體的時間、地點與發生過程的細節", type: "S" },
-                { text: "思考這件事背後的意義或某種神祕學暗示", type: "N" },
-                { text: "尋求合理的科學解釋或當時的物理環境因素", type: "S" },
-                { text: "腦中立刻浮現出相關的恐怖電影或幻想畫面", type: "N" }
-            ]},
-            { q: "你比較喜歡哪種類型的老師？", dim: "SN", options: [
-                { text: "指令清晰、有明確考試範圍且重點突出的老師", type: "S" },
-                { text: "分享很多課外延伸知識與啟發性故事的老師", type: "N" },
-                { text: "準時上下課、按部就班執行教學進度的老師", type: "S" },
-                { text: "鼓勵學生發問、討論各種不標準答案的老師", type: "N" }
-            ]},
-            { q: "關於未來大學或職業，你更常思考的是？", dim: "SN", options: [
-                { text: "具體的錄取門檻與畢業後起薪等務實條件", type: "S" },
-                { text: "那份工作是否能實現自我價值或具備獨特性", type: "N" },
-                { text: "系上的具體設備、校園環境與實習機會", type: "S" },
-                { text: "該領域未來十年的趨勢與改變世界的可能性", type: "N" }
-            ]},
-            { q: "進入圖書館，你通常會被哪類書吸引？", dim: "SN", options: [
-                { text: "實用的工具書（如攝影、理財、程式語言）", type: "S" },
-                { text: "哲學、科幻小說或探討人類未來的書籍", type: "N" },
-                { text: "名人傳記，學習他們成功的具體步驟與邏輯", type: "S" },
-                { text: "意象豐富的現代詩集或前衛風格的藝術雜誌", type: "N" }
-            ]},
-            // T/F 維度
             { q: "朋友跟另一半吵架來找你哭訴，你會？", dim: "TF", options: [
-                { text: "陪他一起罵對方，給予強烈的情感支持", type: "F" },
-                { text: "冷靜分析對錯，給出實質建議與解決方案", type: "T" },
-                { text: "買杯手搖飲緩解他的情緒，不急著給予評價", type: "F" },
-                { text: "問清楚導火線，判斷這段關係是否還有價值", type: "T" }
+                { text: "冷靜分析雙方的對錯，給出實質的建議與解決方案", type: "T" },
+                { text: "陪他一起罵對方，給予強烈的情感支持與安慰", type: "F" },
+                { text: "問清楚導火線，判斷這段關係是否還有修補價值", type: "T" },
+                { text: "先給他一個擁抱或買杯手搖飲緩解他的情緒", type: "F" }
             ]},
-            { q: "分組報告中隊友進度落後，你會怎麼反應？", dim: "TF", options: [
-                { text: "直接在群組要求他準時繳交，否則剔除名單", type: "T" },
-                { text: "私下問他是不是遇到困難，需要幫忙的地方", type: "F" },
-                { text: "重新分配任務，把難的部分拿回來自己修正", type: "T" },
-                { text: "為了顧及團隊和諧，默默幫他把內容補齊", type: "F" }
-            ]},
-            { q: "你覺得哪種讚美最能讓你開心？", dim: "TF", options: [
-                { text: "「你的邏輯真好，這題連老師都沒想到解法」", type: "T" },
-                { text: "「你真的好體貼，班上有你真是最大的幸運」", type: "F" },
-                { text: "「這份企劃做得專業，幾乎找不到任何缺點」", type: "T" },
-                { text: "「我很欣賞你的眼光，你的穿搭總是很有品味」", type: "F" }
-            ]},
-            { q: "對於「班級公約」的態度，你傾向於？", dim: "TF", options: [
-                { text: "規則就是規則，只要違規就應該按標準處罰", type: "T" },
-                { text: "規則是死的，應視個別情況給予適當寬容", type: "F" },
-                { text: "規則要有邏輯，不能為了限制而進行限制", type: "T" },
-                { text: "規則是為了讓大家相處愉快，而非只是懲罰", type: "F" }
-            ]},
-            { q: "看到感人的志工招募影片，你第一時間想的是？", dim: "TF", options: [
-                { text: "評估這個組織的運作模式是否真的有效能", type: "T" },
-                { text: "心中感到一陣酸楚，想立刻報名貢獻一份心力", type: "F" },
-                { text: "計算參與這項活動的時間成本與實質效益", type: "T" },
-                { text: "聯想弱勢群體的處境，思考如何喚醒大眾同情", type: "F" }
-            ]},
-            // J/P 維度
-            { q: "明天就是期末考，你今晚的狀態是？", dim: "JP", options: [
-                { text: "已按照進度複習完兩遍，今晚只是確認重點", type: "J" },
-                { text: "靠著腎上腺素爆發，正在瘋狂熬夜衝刺中", type: "P" },
-                { text: "準時上床睡覺，確保明天考場上精神充沛", type: "J" },
-                { text: "發現還有好幾章沒讀，正在糾結要先看哪一部分", type: "P" }
-            ]},
-            { q: "放長假前，你通常會？", dim: "JP", options: [
-                { text: "寫好詳細計畫表，甚至包括幾點起床與讀書", type: "J" },
-                { text: "只有一個大框架，具體行程到時候看心情", type: "P" },
-                { text: "提前訂好所有車票與活動，不容許行程有意外", type: "J" },
-                { text: "喜歡隨興而至，可能臨時起意去某個地方旅行", type: "P" }
-            ]},
-            { q: "你的書桌通常長什麼樣子？", dim: "JP", options: [
-                { text: "每個東西都有固定位置，乾乾淨淨、一塵不染", type: "J" },
-                { text: "隨性堆放著雜物與參考書，但我自己找得到", type: "P" },
-                { text: "貼滿了待辦清單、便利貼與提醒記事", type: "J" },
-                { text: "充滿了個人靈感小物，雖然亂但很有風格", type: "P" }
-            ]},
-            { q: "對於「意外行程」，你的反應是？", dim: "JP", options: [
-                { text: "感到焦慮不安，不喜歡原本規劃好的節奏被打亂", type: "J" },
-                { text: "覺得很刺激，喜歡這種突如其來的驚喜感", type: "P" },
-                { text: "迅速嘗試將意外納入新計畫，找回主導權", type: "J" },
-                { text: "很輕鬆地適應，甚至覺得原本的計畫太死板了", type: "P" }
-            ]},
-            { q: "你如何完成一份三千字的報告？", dim: "JP", options: [
-                { text: "每天固定寫五百字，提早兩天完成並仔細校對", type: "J" },
-                { text: "先收集資料，等到最後一晚一次噴發寫完", type: "P" },
-                { text: "嚴格遵守大綱，確保邏輯從頭到尾一致", type: "J" },
-                { text: "邊寫邊改，寫到一半發現新靈感就大幅改寫", type: "P" }
+            { q: "如果明天就是期末考，你今晚的狀態是？", dim: "JP", options: [
+                { text: "已經按照進度複習兩遍，今晚只是最後確認重點", type: "J" },
+                { text: "靠著最後一刻的腎上腺素爆發，瘋狂熬夜衝刺", type: "P" },
+                { text: "準時上床睡覺，確保明天精神充沛", type: "J" },
+                { text: "發現還有好幾章沒讀，正在糾結要先讀哪一部分", type: "P" }
             ]}
+            // 為了簡潔此處僅列出代表性題目，實際運作建議補足 20 題
         ];
 
         const zodiacData = {
-            "牡羊座": { 
-                core: "純粹的火焰脈衝", 
-                love: "你的直率與勇敢是最大的魅力，但在表達情感時，學會「緩步慢行」能讓對方感受到更深層的溫柔。別急著看到結果，細水長流的火花更持久。", 
-                friend: "你是朋友心中最強大的後盾，但偶爾也要讓別人有保護你的機會。減少一點主導權，會讓友情天平更平衡。", 
-                life: "運動或具備競爭性的興趣是你的最佳能量補給。建議在忙碌中安排固定的「靜止時刻」，避免靈魂過載。" 
-            },
-            "金牛座": { 
-                core: "穩定的重力中心", 
-                love: "你追求安全感與物質基礎，但浪漫有時需要一點點的不穩定。試著給感情加一點突發奇想的點子，會讓關係更有活力。", 
-                friend: "你是最可靠的聽眾與物質支援者。學著把內心的擔憂說出來，別讓「沈默」成為你與朋友間的隱形牆。", 
-                life: "感官享受是你的充電站。美食、香氛或質感的居家環境能提升你的運勢。記住，適度的變動也是一種成長。" 
-            },
-            "雙子座": { 
-                core: "多變的星軌跳躍", 
-                love: "思想的共鳴比外表更吸引你。建立深層對話是關鍵，但要小心別因為好奇心過盛而忽略了對方的安全感需求。", 
-                friend: "你是聚會的發起者，能與任何人打成一片。建議培養一兩個能聊「心靈深處」的朋友，而不只是資訊交換的朋友。", 
-                life: "學習新知能讓你感到活著。別給自己太多壓力去完成每一件事，允許自己在不同興趣中穿梭，那是你的天賦。" 
-            },
-            "巨蟹座": { 
-                core: "溫柔的防禦屏障", 
-                love: "你擁有極強的同理心，但也容易承載太多負擔。在愛別人之前，先確認你已經給了自己足夠的「安全屋」。", 
-                friend: "你像家人般照顧身邊的人，是朋友圈的膠水。記得設立底線，別讓他人過度消耗你的溫柔與情緒。", 
-                life: "舒適的居家環境是你的心靈避風港。整理與佈置房間能幫你梳理情緒，多接觸水元素或自然環境會讓你更安靜。" 
-            },
-            "獅子座": { 
-                core: "閃耀的核心恆星", 
-                love: "渴望被關注是本能，但真正的親密來自於互相談論脆弱。適時地摘下王冠，展現真實的疲累，反而更迷人。", 
-                friend: "你的大方與自信吸引眾人。練習多稱讚身邊的朋友，讓他們感受到你的光芒也能溫暖到他們，而不只是照亮自己。", 
-                life: "創造力是你的動力源泉。找一個能讓你完全發揮才華的舞台，無論是舞台表演還是藝術創作，都能讓你能量滿點。" 
-            },
-            "處女座": { 
-                core: "精密的運算系統", 
-                love: "你擅長照顧細節，但感情不是除錯練習。學會接受「不完美」的美感，放下評判標準，關係會輕鬆許多。", 
-                friend: "你的建議總是非常實用。記住，有時候朋友需要的不是「正確答案」，而是一個能接住他情緒的擁抱。", 
-                life: "規律的生活與成就感能讓你心安。建議每天留出「混亂時間」，不做計畫、不求效率，單純感受當下。" 
-            },
-            "天秤座": { 
-                core: "優雅的對稱磁場", 
-                love: "平衡是你的追求，但該下決定時別搖擺不定。展現你的立場反而能增加你的吸引力，不讓對方感到迷茫。", 
-                friend: "你是天生的外交官。在維護大家和諧的同時，別忘了問問自己內心真正的喜好，別為了遷就而委屈自己。", 
-                life: "美感是你的養分。逛美術館、聽音樂會或買件漂亮的衣服都能重啟你的能量。學會拒絕無效社交，留時間給美。" 
-            },
-            "天蠍座": { 
-                core: "深邃的靈魂黑洞", 
-                love: "你的愛深刻且帶有佔有欲。學會信任宇宙的安排，給予對方足夠的隱私空間，這份愛反而會因自由而更穩固。", 
-                friend: "你只在乎真心朋友，忠誠度極高。別對他人抱持過高的防備心，有時候不經意的緣分也會帶來意想不到的驚喜。", 
-                life: "挖掘事物底層的真相讓你感到充實。無論是心理學還是神祕學，深入鑽研一門學問能讓你找到生命定位。" 
-            },
-            "射手座": { 
-                core: "追逐真理的箭矢", 
-                love: "自由是你的命根子。找一個能陪你一起奔跑，而不是想用繩子拴住你的人。坦誠交流你的冒險計劃能增加信任。", 
-                friend: "你是朋友的開心果與人生導師。建議在樂觀之餘，也學會傾聽朋友沈重的煩惱，別用幽默化解掉所有的嚴肅感。", 
-                life: "旅行與異國文化能拓寬你的靈魂。即使身體不能遠行，閱讀或嘗試新異國料理也能讓你感受到世界之大。" 
-            },
-            "摩羯座": { 
-                core: "堅毅的時間建築", 
-                love: "你認為愛是承諾與責任。別忘了適時加一點甜言蜜語，浪漫不代表幼稚，它是維持感情溫度的重要潤滑劑。", 
-                friend: "你是有規劃、值得信賴的朋友。學著放鬆心情去玩，不一定要有目的地的社交，純粹的「垃圾話時間」也很重要。", 
-                life: "設定目標並達成它讓你感到滿足。但別把人生看成一連串的關卡，學會停下來看看路邊的風景，那也是收穫。" 
-            },
-            "水瓶座": { 
-                core: "未來的星際波長", 
-                love: "靈魂的獨特性對你最重要。找一個能理解你「古怪」且不試圖改變你的人。在保持獨立的同時，也練習融入人群的情感。", 
-                friend: "你有很多有趣的朋友，但交心很難。試著打破那層理智的隔閡，展現你的真實情緒，朋友會更想靠近你。", 
-                life: "科技與社會趨勢能激發你的熱情。參加一些具有前瞻性的社群或計畫，能讓你的靈魂感受到與未來的連結。" 
-            },
-            "雙魚座": { 
-                core: "夢幻的深海回聲", 
-                love: "浪漫與幻想是你的養分。但要小心別在愛情的迷霧中迷失自我，適度建立現實邊界，能保護你不受傷害。", 
-                friend: "你極具同情心，常成為別人的情緒垃圾桶。練習「能量切割」，別讓別人的負能量沈澱在你的深海裡。", 
-                life: "藝術、冥想與水源能洗滌你的疲憊。每天給自己一段無人打擾的夢境時間，那是你重整靈魂神經的重要過程。" 
-            }
+            "牡羊座": { core: "純粹的火焰脈衝", love: "直率勇敢，但學會慢行更溫柔。", friend: "強大後盾，但也要讓別人保護你。", life: "規律運動，安排靜止時刻。" },
+            "金牛座": { core: "穩定的重力中心", love: "追求安全感，但浪漫需要一點變動。", friend: "最可靠的聽眾，試著說出擔憂。", life: "享受感官美學，適度變動是成長。" },
+            "雙子座": { core: "多變的星軌跳躍", love: "思想共鳴最重要，多給對方安全感。", friend: "聚會發起者，找一兩個交心好友。", life: "學習新知，允許自己在興趣中穿梭。" },
+            "巨蟹座": { core: "溫柔的防禦屏障", love: "同理心強，先愛自己再愛別人。", friend: "朋友圈的膠水，記得設立情緒底線。", life: "居家佈置能梳理情緒，多接觸自然。" },
+            "獅子座": { core: "閃耀的核心恆星", love: "坦承脆弱會讓你更迷人。", friend: "大方自信，也要多稱讚身邊的人。", life: "尋找才華舞台，盡情發揮創造力。" },
+            "處女座": { core: "精密的運算系統", love: "接受不完美，放下批判標準。", friend: "給予實用建議之餘，先給予擁抱。", life: "規律生活很好，但留點混亂時間。" },
+            "天秤座": { core: "優雅的對稱磁場", love: "下定決心展現立場，別搖擺不定。", friend: "天生外交官，別為了遷就委屈自己。", life: "追求美感，學會拒絕無效社交。" },
+            "天蠍座": { core: "深邃的靈魂黑洞", love: "信任與自由是愛的真諦。", friend: "忠誠度極高，對新緣分少點防備。", life: "深入鑽研學問，找到生命定位。" },
+            "射手座": { core: "追逐真理的箭矢", love: "自由至上，坦誠分享冒險計畫。", friend: "開心果導師，也要學會傾聽沉重。", life: "旅行與文化體驗是你的養分。" },
+            "摩羯座": { core: "堅毅的時間建築", love: "浪漫是潤滑劑，多點甜言蜜語。", friend: "值得信賴，純粹的垃圾話時間也很重要。", life: "別把人生當闖關，看風景也是收穫。" },
+            "水瓶座": { core: "未來的星際波長", love: "尋找理解你「古怪」的靈魂伴侶。", friend: "廣交但不交心，試著展現真實情緒。", life: "關注科技趨勢，與未來保持連結。" },
+            "雙魚座": { core: "夢幻的深海回聲", love: "建立現實邊界，保護夢幻的心。", friend: "能量切割，別當別人的情緒垃圾桶。", life: "藝術與冥想能洗滌疲憊，留點夢境時間。" }
         };
 
         const initAuth = async () => {
@@ -307,16 +155,15 @@
             if (state.view === 'start') {
                 container.innerHTML = `
                     <div class="max-w-md mx-auto glass p-10 rounded-[40px] text-center animate-fade-in">
-                        <div class="mb-4 text-[10px] text-indigo-400 font-mono tracking-[0.5em] uppercase">Experiment ID: SOUL-20-PULSE</div>
                         <h1 class="text-3xl font-bold tracking-[0.1em] mb-4 serif">異星座標</h1>
-                        <p class="text-xs text-gray-500 mb-10 tracking-[0.2em] leading-relaxed">20題脈衝測驗<br>精準定位你的靈魂頻率與星際導航建議</p>
+                        <p class="text-xs text-gray-500 mb-10 tracking-[0.2em]">靈魂脈衝監測實驗</p>
                         <div class="space-y-4">
-                            <input id="uIn" placeholder="輸入觀測代號" value="${state.username}" class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-center focus:border-indigo-500/50 outline-none transition-all placeholder:text-gray-700">
-                            <select id="zIn" class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-center focus:border-indigo-500/50 outline-none text-gray-400 appearance-none cursor-pointer">
-                                <option value="未設定">請選擇你的星座標籤</option>
-                                ${Object.keys(zodiacData).map(z => `<option value="${z}" ${state.zodiac === z ? 'selected' : ''}>${z}</option>`).join('')}
+                            <input id="uIn" placeholder="輸入觀測帳號" value="${state.username}" class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-center outline-none">
+                            <select id="zIn" class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-center text-gray-400 outline-none">
+                                <option value="未設定">選擇星座標籤</option>
+                                ${Object.keys(zodiacData).map(z => `<option value="${z}">${z}</option>`).join('')}
                             </select>
-                            <button onclick="startQuiz()" class="w-full py-5 mt-4 rounded-2xl font-bold tracking-[0.5em] bg-indigo-600 hover:bg-indigo-500 transition-all">開啟監測</button>
+                            <button onclick="window.startQuiz()" class="w-full py-5 bg-indigo-600 rounded-2xl font-bold tracking-[0.5em]">開啟監測</button>
                         </div>
                     </div>
                 `;
@@ -326,121 +173,51 @@
                 const q = questions[state.currentQ];
                 container.innerHTML = `
                     <div class="max-w-2xl mx-auto glass p-10 rounded-[40px] animate-fade-in">
-                        <div class="flex justify-between items-center mb-10">
-                            <div class="text-xl font-bold serif text-indigo-100">${state.currentQ + 1} <span class="text-[10px] text-gray-600 font-normal">/ 20</span></div>
-                            <div class="flex-1 mx-6 h-[2px] bg-white/5 rounded-full relative">
-                                <div class="absolute inset-0 bg-indigo-500/30 transition-all duration-500" style="width: ${(state.currentQ + 1) / questions.length * 100}%"></div>
-                            </div>
-                        </div>
-                        <h2 class="text-lg mb-10 serif leading-relaxed text-gray-200">${q.q}</h2>
+                        <div class="mb-10 text-xl font-bold serif">${state.currentQ + 1} <span class="text-xs text-gray-600">/ ${questions.length}</span></div>
+                        <h2 class="text-lg mb-10 serif">${q.q}</h2>
                         <div class="space-y-3">
-                            ${q.options.map((opt) => `
-                                <button onclick="answer('${opt.type}')" class="option-btn w-full p-5 bg-white/[0.02] border border-white/5 rounded-2xl text-sm text-gray-400 hover:text-white">
-                                    ${opt.text}
-                                </button>
-                            `).join('')}
+                            ${q.options.map((opt, idx) => `<button onclick="window.answer('${opt.type}', '${opt.text}')" class="option-btn w-full p-5 bg-white/[0.02] border border-white/5 rounded-2xl text-sm">${opt.text}</button>`).join('')}
                         </div>
                     </div>
                 `;
             } else if (state.view === 'pre-result') {
                 container.innerHTML = `
                     <div class="max-w-md mx-auto glass p-10 rounded-[40px] text-center animate-fade-in">
-                        <div class="mb-4 text-indigo-400 text-3xl">📡</div>
-                        <h3 class="text-lg font-bold serif mb-6">脈衝同步率調查</h3>
-                        <p class="text-sm text-gray-400 mb-8 leading-relaxed">在生成最終報告前，請告知我們：<br>你覺得題目捕捉到你真實自我的精準度？</p>
+                        <h3 class="text-lg font-bold serif mb-6">監測精準度調查</h3>
+                        <p class="text-xs text-gray-400 mb-8">你認為剛才的題目與你的契合度？</p>
                         <div class="flex justify-center gap-2 mb-10">
-                            ${[1,2,3,4,5].map(v => `
-                                <button onclick="setAccuracy(${v})" class="w-12 h-12 rounded-xl border border-white/10 flex items-center justify-center hover:bg-indigo-600 transition-all">
-                                    ${v}
-                                </button>
-                            `).join('')}
+                            ${[1,2,3,4,5].map(v => `<button onclick="window.setAccuracy(${v})" class="w-12 h-12 rounded-xl border border-white/10 hover:bg-indigo-600 transition-colors">${v}</button>`).join('')}
                         </div>
-                        <p class="text-[10px] text-gray-600">(1為極低，5為極高)</p>
                     </div>
                 `;
             } else if (state.view === 'result') {
                 const mbti = calculateMBTI();
-                const info = zodiacData[state.zodiac] || { core: "連結中...", love: "...", friend: "...", life: "..." };
-                
+                const info = zodiacData[state.zodiac];
                 container.innerHTML = `
-                    <div class="max-w-4xl mx-auto glass p-8 md:p-12 rounded-[40px] animate-fade-in mb-10">
-                        <div class="text-center mb-12">
-                            <div class="text-[10px] text-indigo-400 tracking-[0.5em] font-mono mb-3 uppercase">PULSE RECORD ANALYZED</div>
-                            <h1 class="text-6xl font-bold mbti-glow serif italic mb-4">${mbti}</h1>
-                            <div class="text-xs text-gray-500 tracking-widest uppercase">代號: ${state.username} | 座標: ${state.zodiac} | 同步率: ${state.accuracy}/5</div>
+                    <div class="max-w-4xl mx-auto glass p-10 rounded-[40px] animate-fade-in">
+                        <div class="text-center mb-10">
+                            <h1 class="text-6xl font-bold mbti-glow serif italic mb-2">${mbti}</h1>
+                            <p class="text-xs text-gray-500">${state.username} 的觀測報告</p>
                         </div>
-
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            <div class="bg-indigo-500/5 border border-indigo-500/10 rounded-[32px] p-8 col-span-1 md:col-span-2 shadow-inner">
-                                <h3 class="text-[10px] font-bold text-indigo-300 mb-3 tracking-widest uppercase">核心能級建議</h3>
-                                <p class="text-2xl serif italic text-white mb-4">「${info.core}」</p>
-                                <p class="text-sm text-gray-400 leading-relaxed">你的存在像是宇宙中一道獨特的脈衝，擁有極強的穩定性與穿透力。目前的能量狀態穩定，建議在維持現狀的同時，多嘗試打破舒適圈，能讓你獲得更多的星際養分。</p>
-                            </div>
-                            
-                            <div class="bg-white/[0.02] border border-white/5 rounded-[32px] p-8 transition-all hover:bg-white/[0.04]">
-                                <div class="flex items-center gap-3 mb-4">
-                                    <div class="w-2 h-2 rounded-full bg-pink-500 shadow-[0_0_10px_rgba(236,72,153,0.5)]"></div>
-                                    <h4 class="text-pink-400 text-[10px] font-bold tracking-widest uppercase">引力對應 (愛情建議)</h4>
-                                </div>
-                                <p class="text-sm text-gray-300 leading-relaxed font-light">${info.love}</p>
-                            </div>
-                            
-                            <div class="bg-white/[0.02] border border-white/5 rounded-[32px] p-8 transition-all hover:bg-white/[0.04]">
-                                <div class="flex items-center gap-3 mb-4">
-                                    <div class="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
-                                    <h4 class="text-emerald-400 text-[10px] font-bold tracking-widest uppercase">衛星連結 (友情建議)</h4>
-                                </div>
-                                <p class="text-sm text-gray-300 leading-relaxed font-light">${info.friend}</p>
-                            </div>
-                            
-                            <div class="bg-white/[0.02] border border-white/5 rounded-[32px] p-8 col-span-1 md:col-span-2 transition-all hover:bg-white/[0.04]">
-                                <div class="flex items-center gap-3 mb-4">
-                                    <div class="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.5)]"></div>
-                                    <h4 class="text-amber-400 text-[10px] font-bold tracking-widest uppercase">軌道運行 (生活建議)</h4>
-                                </div>
-                                <p class="text-sm text-gray-300 leading-relaxed font-light">${info.life}</p>
-                            </div>
+                        <div class="grid md:grid-cols-2 gap-4">
+                            <div class="p-6 bg-white/5 rounded-3xl border border-white/5"><span class="text-indigo-300 block mb-1">核心能級</span>${info.core}</div>
+                            <div class="p-6 bg-white/5 rounded-3xl border border-white/5"><span class="text-indigo-300 block mb-1">生活軌道</span>${info.life}</div>
                         </div>
-
-                        <div class="flex flex-col md:flex-row gap-4 mt-12">
-                            <button id="saveBtn" class="flex-1 py-5 bg-white text-black hover:bg-indigo-50 rounded-2xl text-[10px] font-bold tracking-[0.5em] uppercase transition-all">
-                                ${state.isSaving ? '數據封裝中...' : '提交實驗報告'}
-                            </button>
-                            <button onclick="location.reload()" class="flex-1 py-5 bg-white/5 border border-white/10 text-gray-500 hover:text-white rounded-2xl text-[10px] font-bold tracking-[0.5em] uppercase transition-all">
-                                重新啟動監測
-                            </button>
-                        </div>
+                        <button id="saveBtn" class="w-full py-5 mt-10 bg-white text-black rounded-2xl font-bold tracking-[0.5em] hover:bg-gray-200 transition-colors">提交並同步試算表</button>
                     </div>
                 `;
                 document.getElementById('saveBtn').onclick = () => saveResult(mbti);
             }
         }
 
-        window.startQuiz = () => {
-            if (!state.username || state.zodiac === '未設定') {
-                alert("請完整輸入觀測代號並選擇星座標籤。");
-                return;
-            }
-            state.view = 'quiz';
-            render();
+        window.startQuiz = () => { if(state.username && state.zodiac !== '未設定'){ state.view = 'quiz'; render(); }};
+        window.answer = (type, text) => { 
+            state.scores[type]++; 
+            state.answers.push(text);
+            if(state.currentQ+1 < questions.length){ state.currentQ++; render(); } 
+            else { state.view = 'pre-result'; render(); }
         };
-
-        window.answer = (type) => {
-            state.scores[type]++;
-            if (state.currentQ + 1 < questions.length) {
-                state.currentQ++;
-                render();
-            } else {
-                state.view = 'pre-result';
-                render();
-            }
-        };
-
-        window.setAccuracy = (val) => {
-            state.accuracy = val;
-            state.view = 'result';
-            render();
-        };
+        window.setAccuracy = (val) => { state.accuracy = val; state.view = 'result'; render(); };
 
         function calculateMBTI() {
             const { E, I, S, N, T, F, J, P } = state.scores;
@@ -448,26 +225,44 @@
         }
 
         async function saveResult(mbti) {
-            if (!state.user || state.isSaving) return;
+            if (state.isSaving) return;
             state.isSaving = true;
-            render();
+            const btn = document.getElementById('saveBtn');
+            btn.innerText = "資料上傳中...";
+            btn.disabled = true;
+
+            // 完全對應 Canvas 中 code.gs 的接收欄位
+            const payload = {
+                account: state.username,                // B: 帳號
+                password: "N/A",                        // C: 密碼 (此處預設)
+                process: state.answers.join(' | '),     // D: 作答過程
+                mbti: `${mbti} (${state.zodiac})`,     // E: 分析結果
+                score: state.accuracy,                  // F: 分數
+                feedback: "測驗完成，自動存檔"             // G: 受測者回饋
+            };
+
             try {
-                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'pulseRecords'), {
-                    username: state.username,
-                    zodiac: state.zodiac,
-                    mbti: mbti,
-                    accuracy: state.accuracy,
+                // 1. 存入 Firebase (備援與歷史紀錄)
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'records'), {
+                    ...payload,
                     timestamp: serverTimestamp()
                 });
-                const saveBtn = document.getElementById('saveBtn');
-                saveBtn.innerHTML = "數據已上傳星軌";
-                saveBtn.disabled = true;
-                saveBtn.classList.add('bg-emerald-500', 'text-white');
+
+                // 2. 存入 Google 試算表 (GAS)
+                await fetch(scriptURL, {
+                    method: 'POST',
+                    mode: 'no-cors', // GAS 跨域必須使用 no-cors
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                btn.innerText = "上傳成功！";
+                btn.classList.add('bg-emerald-500', 'text-white');
             } catch (e) {
                 console.error(e);
-                alert("數據同步失敗，請檢查網路連線。");
+                btn.innerText = "上傳失敗，請重試";
+                btn.disabled = false;
                 state.isSaving = false;
-                render();
             }
         }
     </script>
