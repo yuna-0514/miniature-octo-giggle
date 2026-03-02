@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>異星座標：靈魂脈衝監測實驗</title>
+    <title>異星座標</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;700&family=Noto+Sans+TC:wght@300;400;700&display=swap" rel="stylesheet">
     <style>
@@ -21,63 +21,46 @@
             box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
         }
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
+            from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        .animate-fade-in { animation: fadeIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+        .animate-fade-in { animation: fadeIn 0.6s ease-out forwards; }
         
         .mbti-glow {
             background: linear-gradient(135deg, #818cf8 0%, #c084fc 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            filter: drop-shadow(0 0 20px rgba(129, 140, 248, 0.6));
+            filter: drop-shadow(0 0 15px rgba(129, 140, 248, 0.4));
         }
 
         .option-btn {
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: all 0.2s ease;
             text-align: left;
         }
         .option-btn:hover {
             background: rgba(99, 102, 241, 0.15);
             border-color: rgba(99, 102, 241, 0.5);
-            transform: translateX(10px);
+            transform: translateX(8px);
         }
 
-        .auth-overlay {
-            position: fixed; inset: 0; background: #050810; z-index: 100;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            transition: opacity 0.5s ease;
-        }
-
-        .accuracy-btn {
-            transition: all 0.2s;
-        }
         .accuracy-btn.active {
             background-color: #4f46e5;
             border-color: #6366f1;
-            box-shadow: 0 0 20px rgba(99, 102, 241, 0.5);
+            box-shadow: 0 0 15px rgba(99, 102, 241, 0.4);
         }
     </style>
 </head>
-<body class="min-h-screen flex items-center justify-center p-4 relative">
+<body class="min-h-screen flex items-center justify-center p-4">
 
-    <!-- 啟動遮罩 -->
-    <div id="auth-guard" class="auth-overlay">
-        <div class="text-indigo-400 text-sm tracking-[0.8em] font-mono animate-pulse">INITIALIZING GITHUB DEPLOYMENT...</div>
-        <div class="mt-4 text-[10px] text-gray-600 font-mono italic">CONNECTING TO GOOGLE SCRIPT ENGINE</div>
-    </div>
-
-    <!-- 主程式容器 -->
-    <div id="app" class="w-full max-w-5xl z-10 opacity-0 transition-opacity duration-1000"></div>
+    <!-- 直接顯示 App 容器 -->
+    <div id="app" class="w-full max-w-5xl z-10 opacity-0 transition-opacity duration-500"></div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        /** * Firebase 配置區域
-         * 如果你目前沒有 Firebase，請保持 apiKey 為空，系統會自動跳過並僅使用 GAS。
-         */
+        // Firebase 配置 (若為空則自動忽略)
         const firebaseConfig = {
             apiKey: "", 
             authDomain: "", 
@@ -89,32 +72,31 @@
 
         const GAS_URL = "https://script.google.com/macros/s/AKfycbzsffAQD5mEX_8hXcxLECHzaceLhKlrDQA6RbeFH88LpSicUDIeEh9mJCumyFU3EYYt7A/exec";
         
-        let appInstance, auth, db;
-        let useFirebase = false;
+        let db = null;
+        let auth = null;
 
-        // 修復：只有在填寫了 API Key 的情況下才初始化 Firebase
-        if (firebaseConfig.apiKey && firebaseConfig.apiKey.trim() !== "") {
-            try {
-                appInstance = initializeApp(firebaseConfig);
-                auth = getAuth(appInstance);
-                db = getFirestore(appInstance);
-                useFirebase = true;
-                console.log("Firebase initialized successfully.");
-            } catch (e) {
-                console.warn("Firebase Init Error (Skipping): ", e.message);
-            }
-        } else {
-            console.log("No Firebase API Key provided. Using GAS only mode.");
-        }
-
+        // 初始化狀態
         let state = {
             view: 'start',
             username: '',
             zodiac: '未設定',
             currentQ: 0,
             scores: { E: 0, I: 0, S: 0, N: 0, T: 0, F: 0, J: 0, P: 0 },
-            accuracy: 0,
-            isSaving: false
+            accuracy: 0
+        };
+
+        // 靜默嘗試初始化 Firebase
+        const initFirebase = async () => {
+            if (firebaseConfig.apiKey) {
+                try {
+                    const app = initializeApp(firebaseConfig);
+                    auth = getAuth(app);
+                    db = getFirestore(app);
+                    await signInAnonymously(auth);
+                } catch (e) {
+                    console.log("Firebase disabled.");
+                }
+            }
         };
 
         const questions = [
@@ -140,44 +122,19 @@
             { q: "你如何完成一份繁重的期末報告？", dim: "JP", options: [{ text: "每天固定寫一點，提早幾天就收工", type: "J" }, { text: "先蒐集資料，最後一刻才噴發寫完", type: "P" }, { text: "嚴格遵守大綱，確保架構從頭到尾一致", type: "J" }, { text: "邊寫邊改，常有突如其來的新想法加入", type: "P" }]}
         ];
 
-        const zodiacData = {
-            "牡羊座": { core: "純粹的火焰能量。" }, "金牛座": { core: "穩定的土元素核心。" },
-            "雙子座": { core: "靈動的風之波長。" }, "巨蟹座": { core: "溫柔的水之護盾。" },
-            "獅子座": { core: "閃耀的太陽中心。" }, "處女座": { core: "精密的運算邏輯。" },
-            "天秤座": { core: "優雅的對稱磁場。" }, "天蠍座": { core: "深邃的靈魂黑洞。" },
-            "射手座": { core: "奔向自由的箭矢。" }, "摩羯座": { core: "堅毅的攀登者。" },
-            "水瓶座": { core: "超前的星際波長。" }, "雙魚座": { core: "夢幻的深海回聲。" }
-        };
-
-        const init = async () => {
-            // 修復：只有在 Firebase 啟用的情況下才執行匿名登入
-            if (useFirebase && auth) {
-                try { await signInAnonymously(auth); } catch (e) { console.warn("Auth check skipped."); }
-            }
-            
-            setTimeout(() => {
-                const guard = document.getElementById('auth-guard');
-                if (guard) {
-                    guard.style.opacity = '0';
-                    setTimeout(() => guard.remove(), 500);
-                }
-                document.getElementById('app').style.opacity = '1';
-                render();
-            }, 1000);
-        };
-
         function render() {
             const container = document.getElementById('app');
+            container.style.opacity = '1';
+
             if (state.view === 'start') {
                 container.innerHTML = `
-                    <div class="max-w-xl mx-auto glass p-10 rounded-[50px] text-center animate-fade-in">
-                        <h1 class="text-4xl md:text-5xl font-bold tracking-[0.2em] mb-6 serif mbti-glow">異星座標</h1>
-                        <p class="text-[10px] text-indigo-300 mb-12 tracking-[0.3em]">GITHUB DEPLOYED VERSION</p>
+                    <div class="max-w-xl mx-auto glass p-10 rounded-[40px] text-center animate-fade-in">
+                        <h1 class="text-4xl md:text-5xl font-bold tracking-[0.2em] mb-10 serif mbti-glow">異星座標</h1>
                         <div class="space-y-6">
                             <input id="uIn" placeholder="輸入你的暱稱" value="${state.username}" class="w-full bg-white/5 border border-white/10 rounded-3xl py-4 px-8 text-center text-white outline-none focus:border-indigo-500">
                             <select id="zIn" class="w-full bg-white/5 border border-white/10 rounded-3xl py-4 px-8 text-center text-gray-400 outline-none appearance-none focus:border-indigo-500">
                                 <option value="未設定">選擇星座標籤</option>
-                                ${Object.keys(zodiacData).map(z => `<option value="${z}" ${state.zodiac === z ? 'selected' : ''}>${z}</option>`).join('')}
+                                ${["牡羊座", "金牛座", "雙子座", "巨蟹座", "獅子座", "處女座", "天秤座", "天蠍座", "射手座", "摩羯座", "水瓶座", "雙魚座"].map(z => `<option value="${z}" ${state.zodiac === z ? 'selected' : ''}>${z}</option>`).join('')}
                             </select>
                             <button onclick="window.startQuiz()" class="w-full py-5 bg-indigo-600 rounded-3xl font-bold tracking-[0.5em] text-xl hover:bg-indigo-500 transition-all">開啟監測實驗</button>
                         </div>
@@ -189,7 +146,7 @@
                 const q = questions[state.currentQ];
                 container.innerHTML = `
                     <div class="max-w-3xl mx-auto glass p-10 rounded-[40px] animate-fade-in">
-                        <div class="mb-10 text-3xl font-bold serif text-indigo-400">Q${state.currentQ + 1}</div>
+                        <div class="mb-8 text-xl font-bold serif text-indigo-400">系統掃描：${state.currentQ + 1} / ${questions.length}</div>
                         <h2 class="text-2xl mb-10 serif leading-relaxed font-bold">${q.q}</h2>
                         <div class="grid gap-4">
                             ${q.options.map(o => `<button onclick="window.answer('${o.type}')" class="option-btn w-full p-5 bg-white/[0.03] border border-white/5 rounded-2xl hover:bg-white/[0.08]">${o.text}</button>`).join('')}
@@ -199,18 +156,18 @@
             } else if (state.view === 'result') {
                 const mbti = calculateMBTI();
                 container.innerHTML = `
-                    <div class="max-w-5xl mx-auto glass p-10 rounded-[50px] animate-fade-in">
-                        <div class="text-center mb-12">
-                            <h1 class="text-7xl font-bold mbti-glow serif italic mb-4">${mbti}</h1>
-                            <p class="text-lg text-gray-400 font-light">${state.username}的靈魂報告</p>
-                        </div>
-                        <div class="mb-10 text-center">
+                    <div class="max-w-2xl mx-auto glass p-10 rounded-[50px] animate-fade-in text-center">
+                        <h1 class="text-7xl font-bold mbti-glow serif italic mb-4">${mbti}</h1>
+                        <p class="text-lg text-gray-400 mb-12">${state.username} 的星際座標</p>
+                        
+                        <div class="mb-10">
                             <p class="text-xs text-gray-500 mb-4">結果精準度評分</p>
                             <div class="flex justify-center gap-2">
                                 ${[1,2,3,4,5].map(v => `<button onclick="window.setAccuracy(${v})" class="accuracy-btn w-10 h-10 rounded-lg border border-white/10 ${state.accuracy === v ? 'active' : ''}">${v}</button>`).join('')}
                             </div>
                         </div>
-                        <button id="saveBtn" onclick="window.saveAll('${mbti}')" class="w-full py-5 bg-white text-black rounded-3xl font-bold tracking-[0.5em] hover:bg-gray-200 transition-all">同步至試算表資料庫</button>
+
+                        <button id="saveBtn" onclick="window.saveAll('${mbti}')" class="w-full py-5 bg-white text-black rounded-3xl font-bold tracking-[0.5em] hover:bg-gray-200 transition-all">同步資料庫</button>
                     </div>
                 `;
             }
@@ -239,23 +196,17 @@
             };
 
             try {
-                // 1. Firebase 同步 (僅在有配置時執行)
-                if (useFirebase && db) {
+                if (db) {
                     await addDoc(collection(db, 'records'), { ...payload, createdAt: serverTimestamp() });
                 }
-
-                // 2. GAS 同步 (直接透過 URL 傳送)
                 const queryParams = new URLSearchParams(payload).toString();
                 await fetch(`${GAS_URL}?${queryParams}`, { mode: 'no-cors' });
-
+                
                 btn.innerText = "同步成功";
-                btn.style.backgroundColor = "#10b981";
-                btn.style.color = "white";
+                btn.classList.add('bg-green-500', 'text-white');
             } catch (e) {
-                // 即使 fetch 報錯 (no-cors 常見現象)，資料通常也已送達 GAS
                 btn.innerText = "同步完成";
-                btn.style.backgroundColor = "#10b981";
-                btn.style.color = "white";
+                btn.classList.add('bg-green-500', 'text-white');
             }
         };
 
@@ -264,7 +215,10 @@
             return (E >= I ? "E" : "I") + (S >= N ? "S" : "N") + (T >= F ? "T" : "F") + (J >= P ? "J" : "P");
         }
 
-        window.onload = init;
+        window.onload = async () => {
+            await initFirebase();
+            render();
+        };
     </script>
 </body>
 </html>
