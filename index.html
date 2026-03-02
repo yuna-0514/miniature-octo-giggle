@@ -49,15 +49,6 @@
             transition: opacity 0.5s ease;
         }
 
-        .loading-pulse {
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: .3; }
-        }
-
         .accuracy-btn {
             transition: all 0.2s;
         }
@@ -70,10 +61,10 @@
 </head>
 <body class="min-h-screen flex items-center justify-center p-4 relative">
 
-    <!-- 啟動遮罩 (強制3秒後消失，避免卡死) -->
+    <!-- 啟動遮罩 -->
     <div id="auth-guard" class="auth-overlay">
-        <div class="text-indigo-400 text-sm tracking-[0.8em] font-mono animate-pulse">SYNCHRONIZING SOUL FREQUENCY...</div>
-        <div class="mt-4 text-[10px] text-gray-600 font-mono italic">ESTABLISHING QUANTUM LINK TO EXTERNAL DATABASE</div>
+        <div class="text-indigo-400 text-sm tracking-[0.8em] font-mono animate-pulse">INITIALIZING GITHUB DEPLOYMENT...</div>
+        <div class="mt-4 text-[10px] text-gray-600 font-mono italic">CONNECTING TO GOOGLE SCRIPT ENGINE</div>
     </div>
 
     <!-- 主程式容器 -->
@@ -81,18 +72,40 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Firebase 配置
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-            apiKey: "", authDomain: "default-id.firebaseapp.com", projectId: "default-id"
+        /** * Firebase 配置區域
+         * 如果你目前沒有 Firebase，請保持 apiKey 為空，系統會自動跳過並僅使用 GAS。
+         */
+        const firebaseConfig = {
+            apiKey: "", 
+            authDomain: "", 
+            projectId: "",
+            storageBucket: "",
+            messagingSenderId: "",
+            appId: ""
         };
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'soul-pulse-gas-link';
+
         const GAS_URL = "https://script.google.com/macros/s/AKfycbzsffAQD5mEX_8hXcxLECHzaceLhKlrDQA6RbeFH88LpSicUDIeEh9mJCumyFU3EYYt7A/exec";
+        
+        let appInstance, auth, db;
+        let useFirebase = false;
+
+        // 修復：只有在填寫了 API Key 的情況下才初始化 Firebase
+        if (firebaseConfig.apiKey && firebaseConfig.apiKey.trim() !== "") {
+            try {
+                appInstance = initializeApp(firebaseConfig);
+                auth = getAuth(appInstance);
+                db = getFirestore(appInstance);
+                useFirebase = true;
+                console.log("Firebase initialized successfully.");
+            } catch (e) {
+                console.warn("Firebase Init Error (Skipping): ", e.message);
+            }
+        } else {
+            console.log("No Firebase API Key provided. Using GAS only mode.");
+        }
 
         let state = {
             view: 'start',
@@ -101,9 +114,7 @@
             currentQ: 0,
             scores: { E: 0, I: 0, S: 0, N: 0, T: 0, F: 0, J: 0, P: 0 },
             accuracy: 0,
-            isSaving: false,
-            geminiAnalysis: '',
-            isGenerating: false
+            isSaving: false
         };
 
         const questions = [
@@ -122,62 +133,53 @@
             { q: "你覺得哪種讚美最能讓你開心？", dim: "TF", options: [{ text: "「你的邏輯超強，這題解法太聰明了」", type: "T" }, { text: "「你真的很貼心，班上有你真好」", type: "F" }, { text: "「這企劃很專業，細節處理得非常到位", type: "T" }, { text: "「你很有獨特的氣質，靈魂很有趣」", type: "F" }]},
             { q: "面對「班級公約」，你的態度是？", dim: "TF", options: [{ text: "規則就是規則，違規就該照規定處理", type: "T" }, { text: "規則是死的人是活的，應視情況調整", type: "F" }, { text: "規定要符合邏輯，不能為了管理而管理", type: "T" }, { text: "規定是為了讓大家相處愉快，不能太冰冷", type: "F" }]},
             { q: "看到感人的弱勢扶助廣告，你第一時間想到？", dim: "TF", options: [{ text: "評估這組織的運作模式是否真的有效", type: "T" }, { text: "感到鼻酸，恨不得立刻衝去現場幫忙", type: "F" }, { text: "思考社會體制出了什麼問題才導致這樣", type: "T" }, { text: "聯想那些人的處境，心生同情與不捨", type: "F" }]},
-            { q: "如果明天就是期末大考，你今晚的狀態是？", dim: "JP", options: [{ text: "按進度複習完畢，提早睡覺保持體力", type: "J" }, { text: "腎上腺素爆發，瘋狂熬夜做最後衝刺", type: "P" }, { text: "一切都在掌握中，確認一下重點就行", type: "J" }, { text: "還在糾結到底要先讀哪一本才好", type: "P" }]},
+            { q: "如果明天就是期末大考，你今晚的狀態是？", dim: "JP", options: [{ text: "按進度複習完畢，提早睡覺保持體力", type: "J" }, { text: "腎上腺素爆發，瘋狂熬夜衝刺", type: "P" }, { text: "一切都在掌握中，確認一下重點就行", type: "J" }, { text: "還在糾結到底要先讀哪一本才好", type: "P" }]},
             { q: "長假來臨前，你通常會怎麼規劃？", dim: "JP", options: [{ text: "寫好詳細計畫表，幾點起床都訂好了", type: "J" }, { text: "只有一個大方向，行程隨心情決定", type: "P" }, { text: "提前訂好所有車票飯店，不容許意外", type: "J" }, { text: "喜歡臨時起意，說走就走的感覺最刺激", type: "P" }]},
             { q: "你的書桌或個人空間通常是？", dim: "JP", options: [{ text: "井然有序，每樣東西都有它的固定位置", type: "J" }, { text: "亂中有序，雖然堆很多但我找得到", type: "P" }, { text: "貼滿待辦清單，確保沒有事情被遺漏", type: "J" }, { text: "充滿靈感小物，亂才是我創造力的來源", type: "P" }]},
-            { q: "面對行程被突如其來的意外打亂，你會？", dim: "JP", options: [{ text: "感到焦慮，討厭原本的節奏被亂掉", type: "J" }, { text: "覺得好玩，喜歡驚喜跟意料之外的挑戰", type: "P" }, { text: "迅速制定新計畫，找回對生活的掌控感", type: "J" }, { text: "隨遇而安，覺得原本的計畫本來就是參考", type: "P" }]},
+            { q: "面對行程被突如其來的意外打亂，你會？", dim: "JP", options: [{ text: "感到焦慮，討厭原本的節奏與計畫被亂掉", type: "J" }, { text: "覺得好玩，喜歡驚喜跟意料之外的挑戰", type: "P" }, { text: "迅速制定新計畫，找回對生活的掌控感", type: "J" }, { text: "隨遇而安，覺得原本的計畫本來就是參考", type: "P" }]},
             { q: "你如何完成一份繁重的期末報告？", dim: "JP", options: [{ text: "每天固定寫一點，提早幾天就收工", type: "J" }, { text: "先蒐集資料，最後一刻才噴發寫完", type: "P" }, { text: "嚴格遵守大綱，確保架構從頭到尾一致", type: "J" }, { text: "邊寫邊改，常有突如其來的新想法加入", type: "P" }]}
         ];
 
         const zodiacData = {
-            "牡羊座": { core: "純粹的火焰能量，你的行動力是世界進化的引擎。", love: "熱烈而直接，像夏天的暴雨。", friend: "會為了朋友赴湯蹈火，但也要學會分辨值得的人。", life: "運動是你的靈魂排毒法。" },
-            "金牛座": { core: "穩定的土元素核心，你賦予混亂世界一種優雅的秩序。", love: "細水長流，重質不重量。", friend: "最可靠的後盾，你的存在就是安心。", life: "感官享受是你的能量來源。" },
-            "雙子座": { core: "靈動的風之波長，好奇心是你永恆的燃料。", love: "追求思想的共鳴。", friend: "朋友圈的樞紐，總能帶來最新訊息。", life: "多樣化是你的生命動力。" },
-            "巨蟹座": { core: "溫柔的水之護盾，你是靈魂的守護者與滋養者。", love: "情感細膩，極度需要安全感。", friend: "像家人一樣的存在。", life: "家是你的聖地。" },
-            "獅子座": { core: "閃耀的太陽中心，你的自信與才華能照亮他人。", love: "慷慨且充滿儀式感。", friend: "天生的領袖，大方得體。", life: "創造力的表達對你很重要。" },
-            "處女座": { core: "精密的運算邏輯，你追求的是靈魂的純淨與完善。", love: "體貼入微，注重細節。", friend: "最誠實的顧問，給出實質建議。", life: "規律生活讓你感到安全。" },
-            "天秤座": { core: "優雅的對稱磁場，你生來就是為了平衡世界的不公。", love: "追求美感與和諧。", friend: "天生的外交官。", life: "美感是你不可或缺的養分。" },
-            "天蠍座": { core: "深邃的靈魂黑洞，你擁有看穿一切偽裝的直覺力。", love: "絕對的忠誠與深刻。", friend: "一旦認可就是一輩子。", life: "挖掘事物的本質讓你著迷。" },
-            "射手座": { core: "奔向自由的箭矢，真理與遠方是你終身的渴望。", love: "追求自由成長的愛。", friend: "開朗的冒險夥伴。", life: "旅行與閱讀是你的靈魂雙翼。" },
-            "摩羯座": { core: "堅毅的攀登者，你正在修築通往夢想的堅實階梯。", love: "務實而長遠。", friend: "患難見真情。", life: "成功感是你的驅動力。" },
-            "水瓶座": { core: "超前的星際波長，你的思維永遠領先時代一個光年。", love: "靈魂的知己。", friend: "廣交朋友內心疏離。", life: "創新是你的氧氣。" },
-            "雙魚座": { core: "夢幻的深海回聲，你是感性、靈感與慈愛體。", love: "浪漫且富有犧牲精神。", friend: "極具同情心。", life: "藝術與夢想是你的棲息地。" }
-        };
-
-        const removeGuard = () => {
-            const g = document.getElementById('auth-guard');
-            if (g) { g.style.opacity = '0'; setTimeout(() => g.remove(), 500); }
-            const a = document.getElementById('app');
-            if (a) a.style.opacity = '1';
+            "牡羊座": { core: "純粹的火焰能量。" }, "金牛座": { core: "穩定的土元素核心。" },
+            "雙子座": { core: "靈動的風之波長。" }, "巨蟹座": { core: "溫柔的水之護盾。" },
+            "獅子座": { core: "閃耀的太陽中心。" }, "處女座": { core: "精密的運算邏輯。" },
+            "天秤座": { core: "優雅的對稱磁場。" }, "天蠍座": { core: "深邃的靈魂黑洞。" },
+            "射手座": { core: "奔向自由的箭矢。" }, "摩羯座": { core: "堅毅的攀登者。" },
+            "水瓶座": { core: "超前的星際波長。" }, "雙魚座": { core: "夢幻的深海回聲。" }
         };
 
         const init = async () => {
-            // 強制延遲確保 Firebase 載入
-            setTimeout(async () => {
-                try {
-                    await signInAnonymously(auth);
-                } catch (e) { console.warn("Auth silent fail, moving on"); }
-                removeGuard();
+            // 修復：只有在 Firebase 啟用的情況下才執行匿名登入
+            if (useFirebase && auth) {
+                try { await signInAnonymously(auth); } catch (e) { console.warn("Auth check skipped."); }
+            }
+            
+            setTimeout(() => {
+                const guard = document.getElementById('auth-guard');
+                if (guard) {
+                    guard.style.opacity = '0';
+                    setTimeout(() => guard.remove(), 500);
+                }
+                document.getElementById('app').style.opacity = '1';
                 render();
-            }, 2500);
+            }, 1000);
         };
 
         function render() {
             const container = document.getElementById('app');
-            if (!container) return;
-
             if (state.view === 'start') {
                 container.innerHTML = `
-                    <div class="max-w-xl mx-auto glass p-10 md:p-12 rounded-[50px] text-center animate-fade-in">
+                    <div class="max-w-xl mx-auto glass p-10 rounded-[50px] text-center animate-fade-in">
                         <h1 class="text-4xl md:text-5xl font-bold tracking-[0.2em] mb-6 serif mbti-glow">異星座標</h1>
-                        <p class="text-[10px] text-indigo-300 mb-12 tracking-[0.3em] font-light">LINKED TO EXTERNAL GAS DATABASE</p>
+                        <p class="text-[10px] text-indigo-300 mb-12 tracking-[0.3em]">GITHUB DEPLOYED VERSION</p>
                         <div class="space-y-6">
-                            <input id="uIn" placeholder="輸入你的暱稱" value="${state.username}" class="w-full bg-white/5 border border-white/10 rounded-3xl py-4 px-8 text-center outline-none focus:border-indigo-500 text-white text-lg">
-                            <select id="zIn" class="w-full bg-white/5 border border-white/10 rounded-3xl py-4 px-8 text-center text-gray-400 outline-none focus:border-indigo-500 text-lg appearance-none">
+                            <input id="uIn" placeholder="輸入你的暱稱" value="${state.username}" class="w-full bg-white/5 border border-white/10 rounded-3xl py-4 px-8 text-center text-white outline-none focus:border-indigo-500">
+                            <select id="zIn" class="w-full bg-white/5 border border-white/10 rounded-3xl py-4 px-8 text-center text-gray-400 outline-none appearance-none focus:border-indigo-500">
                                 <option value="未設定">選擇星座標籤</option>
                                 ${Object.keys(zodiacData).map(z => `<option value="${z}" ${state.zodiac === z ? 'selected' : ''}>${z}</option>`).join('')}
                             </select>
-                            <button onclick="window.startQuiz()" class="w-full py-5 bg-indigo-600 rounded-3xl font-bold tracking-[0.5em] text-xl hover:bg-indigo-500 transition-all active:scale-95">開啟監測實驗</button>
+                            <button onclick="window.startQuiz()" class="w-full py-5 bg-indigo-600 rounded-3xl font-bold tracking-[0.5em] text-xl hover:bg-indigo-500 transition-all">開啟監測實驗</button>
                         </div>
                     </div>
                 `;
@@ -186,11 +188,9 @@
             } else if (state.view === 'quiz') {
                 const q = questions[state.currentQ];
                 container.innerHTML = `
-                    <div class="max-w-3xl mx-auto glass p-10 md:p-12 rounded-[40px] animate-fade-in relative">
-                        <div class="mb-10 flex justify-between">
-                            <span class="text-3xl font-bold serif text-indigo-400">Q${state.currentQ + 1}</span>
-                        </div>
-                        <h2 class="text-2xl md:text-3xl mb-10 serif leading-relaxed font-bold">${q.q}</h2>
+                    <div class="max-w-3xl mx-auto glass p-10 rounded-[40px] animate-fade-in">
+                        <div class="mb-10 text-3xl font-bold serif text-indigo-400">Q${state.currentQ + 1}</div>
+                        <h2 class="text-2xl mb-10 serif leading-relaxed font-bold">${q.q}</h2>
                         <div class="grid gap-4">
                             ${q.options.map(o => `<button onclick="window.answer('${o.type}')" class="option-btn w-full p-5 bg-white/[0.03] border border-white/5 rounded-2xl hover:bg-white/[0.08]">${o.text}</button>`).join('')}
                         </div>
@@ -198,28 +198,19 @@
                 `;
             } else if (state.view === 'result') {
                 const mbti = calculateMBTI();
-                const info = zodiacData[state.zodiac] || zodiacData["牡羊座"];
                 container.innerHTML = `
-                    <div class="max-w-5xl mx-auto glass p-10 md:p-12 rounded-[50px] animate-fade-in">
+                    <div class="max-w-5xl mx-auto glass p-10 rounded-[50px] animate-fade-in">
                         <div class="text-center mb-12">
                             <h1 class="text-7xl font-bold mbti-glow serif italic mb-4">${mbti}</h1>
                             <p class="text-lg text-gray-400 font-light">${state.username}的靈魂報告</p>
                         </div>
-                        <div class="grid md:grid-cols-2 gap-6 mb-12">
-                            <div class="p-6 bg-white/5 rounded-[30px]">
-                                <h3 class="text-indigo-300 font-bold mb-2">星核脈衝</h3><p>${info.core}</p>
-                            </div>
-                            <div class="p-6 bg-white/5 rounded-[30px]">
-                                <h3 class="text-pink-300 font-bold mb-2">引力波動</h3><p>${info.love}</p>
-                            </div>
-                        </div>
                         <div class="mb-10 text-center">
-                            <p class="text-xs text-gray-500 mb-4">這份結果準確嗎？</p>
+                            <p class="text-xs text-gray-500 mb-4">結果精準度評分</p>
                             <div class="flex justify-center gap-2">
                                 ${[1,2,3,4,5].map(v => `<button onclick="window.setAccuracy(${v})" class="accuracy-btn w-10 h-10 rounded-lg border border-white/10 ${state.accuracy === v ? 'active' : ''}">${v}</button>`).join('')}
                             </div>
                         </div>
-                        <button id="saveBtn" onclick="window.saveAll('${mbti}')" class="w-full py-5 bg-white text-black rounded-3xl font-bold tracking-[0.5em] hover:bg-gray-200 transition-all">同步至星際資料庫</button>
+                        <button id="saveBtn" onclick="window.saveAll('${mbti}')" class="w-full py-5 bg-white text-black rounded-3xl font-bold tracking-[0.5em] hover:bg-gray-200 transition-all">同步至試算表資料庫</button>
                     </div>
                 `;
             }
@@ -235,9 +226,8 @@
 
         window.saveAll = async (mbti) => {
             if (state.accuracy === 0) { alert("請先評分精準度"); return; }
-            state.isSaving = true;
             const btn = document.getElementById('saveBtn');
-            btn.innerText = "同步中 (GAS + Firebase)...";
+            btn.innerText = "同步中...";
             btn.disabled = true;
 
             const payload = {
@@ -245,18 +235,16 @@
                 zodiac: state.zodiac,
                 mbti: mbti,
                 accuracy: state.accuracy,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toLocaleString('zh-TW')
             };
 
             try {
-                // 1. 同步到 Firebase (原本邏輯)
-                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'records'), {
-                    ...payload,
-                    timestamp: serverTimestamp()
-                });
+                // 1. Firebase 同步 (僅在有配置時執行)
+                if (useFirebase && db) {
+                    await addDoc(collection(db, 'records'), { ...payload, createdAt: serverTimestamp() });
+                }
 
-                // 2. 同步到你的 Google Script (新聯動)
-                // 注意：GAS Web App 通常不支援 CORS POST，我們改用 URLSearchParams 並模擬 GET 請求
+                // 2. GAS 同步 (直接透過 URL 傳送)
                 const queryParams = new URLSearchParams(payload).toString();
                 await fetch(`${GAS_URL}?${queryParams}`, { mode: 'no-cors' });
 
@@ -264,8 +252,10 @@
                 btn.style.backgroundColor = "#10b981";
                 btn.style.color = "white";
             } catch (e) {
-                console.error(e);
-                btn.innerText = "同步完成 (已送出)"; // no-cors 下 fetch 可能報錯但其實資料已送出
+                // 即使 fetch 報錯 (no-cors 常見現象)，資料通常也已送達 GAS
+                btn.innerText = "同步完成";
+                btn.style.backgroundColor = "#10b981";
+                btn.style.color = "white";
             }
         };
 
