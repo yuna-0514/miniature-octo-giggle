@@ -47,6 +47,7 @@
         .auth-overlay {
             position: fixed; inset: 0; background: #050810; z-index: 100;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: opacity 0.5s ease;
         }
 
         .loading-pulse {
@@ -67,7 +68,6 @@
             box-shadow: 0 0 20px rgba(99, 102, 241, 0.5);
         }
 
-        /* 自定義捲軸 */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
@@ -86,18 +86,19 @@
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        const apiKey = ""; // API Key 留空
-
-        let config;
+        // Firebase 配置處理
+        let firebaseConfig;
         try {
-            config = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-                apiKey: "API_KEY",
-                authDomain: "PROJECT.firebaseapp.com",
-                projectId: "PROJECT_ID"
+            firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+                apiKey: "", 
+                authDomain: "default-id.firebaseapp.com",
+                projectId: "default-id"
             };
-        } catch (e) { console.error(e); }
+        } catch (e) {
+            console.error("Firebase config error:", e);
+        }
 
-        const app = initializeApp(config);
+        const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'soul-pulse-v3';
@@ -141,79 +142,55 @@
         ];
 
         const zodiacData = {
-            "牡羊座": { core: "純粹的火焰能量，你的行動力是世界進化的引擎。", love: "熱烈而直接，像夏天的暴雨。建議：適度慢下節奏，聆聽對方的頻率。", friend: "你是那種會為了朋友赴湯蹈火的人，但也要學會分辨誰值得你的熱情。", life: "運動是你的靈魂排毒法。建議多嘗試高強度運動來釋放多餘能量。" },
-            "金牛座": { core: "穩定的土元素核心，你賦予混亂世界一種優雅的秩序。", love: "細水長流，重質不重量。建議：偶爾嘗試一點點冒險，驚喜會讓感情更有趣。", friend: "最可靠的後盾，你的存在就是安心。建議：對新認識的人再多一點開放性。", life: "感官享受是你的能量來源。打造一個充滿美感的環境對你的心理健康至關重要。" },
-            "雙子座": { core: "靈動的風之波長，好奇心是你永恆的燃料。", love: "追求思想的共鳴。建議：練習在感情中保持深度，不要只停留在表面的趣味。", friend: "朋友圈的樞紐，你總能帶來最新的訊息。建議：經營幾段真正深交的關係。", life: "多樣化是你的生命動力。學習新技能或短途旅行能讓你保持靈活感。" },
-            "巨蟹座": { core: "溫柔的水之護盾，你是靈魂的守護者與滋養者。", love: "情感細膩，極度需要安全感。建議：學會先愛自己，不要在愛裡過度自我犧牲。", friend: "像家人一樣的存在。建議：設立情緒邊界，不要成為別人的情緒垃圾桶。", life: "家是你的聖地。佈置一個溫暖的私人空間，能有效緩解你的焦慮。" },
-            "獅子座": { core: "閃耀的太陽中心，你的自信與才華能照亮他人。", love: "慷慨且充滿儀式感。建議：展示脆弱並非弱點，反而能拉近彼此的心靈距離。", friend: "天生的領袖，大方得體。建議：多給身邊的朋友一些發光的機會。", life: "創造力的表達對你很重要。找個舞台（不論大小）來展現你的光芒吧。" },
-            "處女座": { core: "精密的運算邏輯，你追求的是靈魂的純淨與完善。", love: "體貼入微，注重細節。建議：接受不完美是人生的一部分，放過自己也放過對方。", friend: "最誠實的顧問，總能給出實質建議。建議：有時候，朋友只需要一個擁抱而非分析。", life: "規律生活讓你感到安全。每天留出一段「混亂時間」去嘗試無計畫的事情。" },
-            "天秤座": { core: "優雅的對稱磁場，你生來就是為了平衡世界的不公。", love: "追求美感與和諧。建議：練習勇敢說出內心的真實立場，不要為了迎合而迷失。", friend: "天生的外交官。建議：拒絕那些消耗你能量的人，你不需要讓每個人都滿意。", life: "美感是你不可或缺的養分。多看畫展、聽音樂，讓藝術洗滌你的感官。" },
-            "天蠍座": { core: "深邃的靈魂黑洞，你擁有看穿一切偽裝的直覺力。", love: "絕對的忠誠與深刻。建議：信任是慢慢建立的過程，給予對方一點呼吸的空間。", friend: "一旦認可就是一輩子。建議：對世界的防備心可以稍微減少一些。", life: "挖掘事物的本質讓你著迷。適合鑽研心理學或神祕學來豐富內在層次。" },
-            "射手座": { core: "奔向自由的箭矢，真理與遠方是你終身的渴望。", love: "追求自由成長的愛。建議：給予伴侶承諾並不等於失去自由，它是更深層的冒險。", friend: "開朗的冒險夥伴。建議：練習在朋友脆弱時安靜地坐著，不要總想著轉移話題。", life: "旅行與閱讀是你的靈魂雙翼。保持探索，不要讓生活變得瑣碎沉悶。" },
-            "摩羯座": { core: "堅毅的攀登者，你正在修築通往夢想的堅實階梯。", love: "務實而長遠。建議：偶爾說點浪漫的廢話，感情需要一點點無意義的甜蜜。", friend: "患難見真情。建議：放下工作模式，嘗試跟朋友一起做些純粹浪費時間的事。", life: "成功感是你的驅動力。但請記得，偶爾的停頓與休息也是計畫的一部分。" },
-            "水瓶座": { core: "超前的星際波長，你的思維永遠領先時代一個光年。", love: "靈魂的知己。建議：練習表達內心真實的情感，而非僅僅是理念上的共鳴。", friend: "廣交朋友但內心疏離。建議：試著向幾個核心朋友展現你最真實（甚至怪異）的一面。", life: "創新是你的氧氣。參與社會改革或科技開發能讓你感到生命的價值。" },
-            "雙魚座": { core: "夢幻的深海回聲，你是感性、靈感與慈悲的結合體。", love: "浪漫且富有犧牲精神。建議：建立情感防火牆，分清哪些是你的情緒，哪些是別人的。", friend: "極具同情心。建議：遠離那些能量負面的人，保護你敏感的靈魂。", life: "藝術、冥想與夢想是你的棲息地。每天留出放空的時間，讓靈魂自由漫遊。" }
+            "牡羊座": { core: "純粹的火焰能量，你的行動力是世界進化的引擎。", love: "熱烈而直接，像夏天的暴雨。", friend: "會為了朋友赴湯蹈火，但也要學會分辨值得的人。", life: "運動是你的靈魂排毒法。" },
+            "金牛座": { core: "穩定的土元素核心，你賦予混亂世界一種優雅的秩序。", love: "細水長流，重質不重量。", friend: "最可靠的後盾，你的存在就是安心。", life: "感官享受是你的能量來源。" },
+            "雙子座": { core: "靈動的風之波長，好奇心是你永恆的燃料。", love: "追求思想的共鳴。", friend: "朋友圈的樞紐，總能帶來最新訊息。", life: "多樣化是你的生命動力。" },
+            "巨蟹座": { core: "溫柔的水之護盾，你是靈魂的守護者與滋養者。", love: "情感細膩，極度需要安全感。", friend: "像家人一樣的存在。", life: "家是你的聖地。" },
+            "獅子座": { core: "閃耀的太陽中心，你的自信與才華能照亮他人。", love: "慷慨且充滿儀式感。", friend: "天生的領袖，大方得體。", life: "創造力的表達對你很重要。" },
+            "處女座": { core: "精密的運算邏輯，你追求的是靈魂的純淨與完善。", love: "體貼入微，注重細節。", friend: "最誠實的顧問，給出實質建議。", life: "規律生活讓你感到安全。" },
+            "天秤座": { core: "優雅的對稱磁場，你生來就是為了平衡世界的不公。", love: "追求美感與和諧。", friend: "天生的外交官。", life: "美感是你不可或缺的養分。" },
+            "天蠍座": { core: "深邃的靈魂黑洞，你擁有看穿一切偽裝的直覺力。", love: "絕對的忠誠與深刻。", friend: "一旦認可就是一輩子。", life: "挖掘事物的本質讓你著迷。" },
+            "射手座": { core: "奔向自由的箭矢，真理與遠方是你終身的渴望。", love: "追求自由成長的愛。", friend: "開朗的冒險夥伴。", life: "旅行與閱讀是你的靈魂雙翼。" },
+            "摩羯座": { core: "堅毅的攀登者，你正在修築通往夢想的堅實階梯。", love: "務實而長遠。", friend: "患難見真情。", life: "成功感是你的驅動力。" },
+            "水瓶座": { core: "超前的星際波長，你的思維永遠領先時代一個光年。", love: "靈魂的知己。", friend: "廣交朋友但內心疏離。", life: "創新是你的氧氣。" },
+            "雙魚座": { core: "夢幻的深海回聲，你是感性、靈感與慈愛體。", love: "浪漫且富有犧牲精神。", friend: "極具同情心。", life: "藝術與夢想是你的棲息地。" }
         };
 
-        async function fetchGemini(prompt) {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-            const response = await fetch(url, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-            });
-            const result = await response.json();
-            return result.candidates?.[0]?.content?.parts?.[0]?.text;
-        }
-
-        async function generateTTS(text) {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
-            const response = await fetch(url, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{ parts: [{ text: `Say in a soothing, mysterious voice: ${text}` }] }],
-                    generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } } },
-                    model: "gemini-2.5-flash-preview-tts"
-                })
-            });
-            const result = await response.json();
-            const data = result.candidates[0].content.parts[0].inlineData.data;
-            const binary = atob(data);
-            const bytes = new Uint8Array(binary.length);
-            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-            const blob = new Blob([encodeWAV(bytes, 24000)], { type: 'audio/wav' });
-            return URL.createObjectURL(blob);
-        }
-
-        function encodeWAV(samples, sampleRate) {
-            const buffer = new ArrayBuffer(44 + samples.length);
-            const view = new DataView(buffer);
-            const writeString = (offset, string) => { for (let i = 0; i < string.length; i++) view.setUint8(offset + i, string.charCodeAt(i)); };
-            writeString(0, 'RIFF'); view.setUint32(4, 36 + samples.length, true);
-            writeString(8, 'WAVE'); writeString(12, 'fmt ');
-            view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
-            view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true);
-            view.setUint16(32, 2, true); view.setUint16(34, 16, true);
-            writeString(36, 'data'); view.setUint32(40, samples.length, true);
-            let offset = 44;
-            for (let i = 0; i < samples.length; i += 2) {
-                view.setInt16(offset, (samples[i+1] << 8) | samples[i], true);
-                offset += 2;
-            }
-            return buffer;
-        }
-
-        const initAuth = async () => {
-            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                await signInWithCustomToken(auth, __initial_auth_token);
-            } else { await signInAnonymously(auth); }
-            onAuthStateChanged(auth, (user) => { state.user = user; removeGuard(); render(); });
-        };
-
-        function removeGuard() {
+        const removeGuard = () => {
             const guard = document.getElementById('auth-guard');
-            if (guard) { guard.style.opacity = '0'; setTimeout(() => guard.remove(), 500); }
+            if (guard) {
+                guard.style.opacity = '0';
+                setTimeout(() => guard.remove(), 500);
+            }
             document.getElementById('app').style.opacity = '1';
-        }
+        };
+
+        // 初始化驗證與超時保護
+        const initAuth = async () => {
+            // 設定 3 秒超時，防止卡死
+            const timeout = setTimeout(() => {
+                console.warn("Auth initialization timed out, proceeding anyway.");
+                removeGuard();
+                render();
+            }, 3000);
+
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (err) {
+                console.error("Auth Error:", err);
+            }
+
+            onAuthStateChanged(auth, (user) => {
+                clearTimeout(timeout);
+                state.user = user;
+                removeGuard();
+                render();
+            });
+        };
 
         initAuth();
 
@@ -221,22 +198,22 @@
             const container = document.getElementById('app');
             if (state.view === 'start') {
                 container.innerHTML = `
-                    <div class="max-w-xl mx-auto glass p-12 rounded-[50px] text-center animate-fade-in">
-                        <h1 class="text-5xl font-bold tracking-[0.2em] mb-6 serif mbti-glow">異星座標</h1>
-                        <p class="text-sm text-indigo-300 mb-12 tracking-[0.3em] font-light">靈魂脈衝監測實驗：發現你的星際人格</p>
+                    <div class="max-w-xl mx-auto glass p-10 md:p-12 rounded-[50px] text-center animate-fade-in">
+                        <h1 class="text-4xl md:text-5xl font-bold tracking-[0.2em] mb-6 serif mbti-glow">異星座標</h1>
+                        <p class="text-xs md:text-sm text-indigo-300 mb-12 tracking-[0.3em] font-light">靈魂脈衝監測實驗：發現你的星際人格</p>
                         <div class="space-y-6">
                             <div class="text-left">
                                 <label class="text-[10px] text-gray-500 ml-4 mb-2 block tracking-widest">SOUL IDENTITY</label>
-                                <input id="uIn" placeholder="輸入你的暱稱 (例如: 星際旅者)" value="${state.username}" class="w-full bg-white/5 border border-white/10 rounded-3xl py-5 px-8 text-center outline-none focus:border-indigo-500 text-white text-lg transition-all focus:bg-white/10">
+                                <input id="uIn" placeholder="輸入你的暱稱" value="${state.username}" class="w-full bg-white/5 border border-white/10 rounded-3xl py-4 px-8 text-center outline-none focus:border-indigo-500 text-white text-lg transition-all">
                             </div>
                             <div class="text-left">
                                 <label class="text-[10px] text-gray-500 ml-4 mb-2 block tracking-widest">ASTRO TAG</label>
-                                <select id="zIn" class="w-full bg-white/5 border border-white/10 rounded-3xl py-5 px-8 text-center text-gray-400 outline-none focus:border-indigo-500 text-lg transition-all focus:bg-white/10 appearance-none">
+                                <select id="zIn" class="w-full bg-white/5 border border-white/10 rounded-3xl py-4 px-8 text-center text-gray-400 outline-none focus:border-indigo-500 text-lg transition-all appearance-none">
                                     <option value="未設定">選擇星座標籤</option>
                                     ${Object.keys(zodiacData).map(z => `<option value="${z}" ${state.zodiac === z ? 'selected' : ''}>${z}</option>`).join('')}
                                 </select>
                             </div>
-                            <button onclick="window.startQuiz()" class="w-full py-6 bg-indigo-600 rounded-3xl font-bold tracking-[0.5em] text-xl hover:bg-indigo-500 shadow-2xl shadow-indigo-600/30 transition-all active:scale-95">開啟監測實驗</button>
+                            <button onclick="window.startQuiz()" class="w-full py-5 bg-indigo-600 rounded-3xl font-bold tracking-[0.5em] text-xl hover:bg-indigo-500 shadow-xl transition-all active:scale-95">開啟監測實驗</button>
                         </div>
                     </div>
                 `;
@@ -245,15 +222,15 @@
             } else if (state.view === 'quiz') {
                 const q = questions[state.currentQ];
                 container.innerHTML = `
-                    <div class="max-w-3xl mx-auto glass p-12 rounded-[50px] animate-fade-in relative overflow-hidden">
+                    <div class="max-w-3xl mx-auto glass p-10 md:p-12 rounded-[40px] animate-fade-in relative overflow-hidden">
                         <div class="absolute top-0 left-0 h-1 bg-indigo-500 transition-all duration-500" style="width: ${(state.currentQ / questions.length) * 100}%"></div>
-                        <div class="mb-12 flex justify-between items-end">
-                            <span class="text-4xl font-bold serif text-indigo-400">Q${state.currentQ + 1}</span>
-                            <span class="text-xs text-gray-500 tracking-tighter uppercase font-mono">Pulse Level: ${Math.floor((state.currentQ/questions.length)*100)}%</span>
+                        <div class="mb-10 flex justify-between items-end">
+                            <span class="text-3xl font-bold serif text-indigo-400">Q${state.currentQ + 1}</span>
+                            <span class="text-[10px] text-gray-500 font-mono">PULSE: ${Math.floor((state.currentQ/questions.length)*100)}%</span>
                         </div>
-                        <h2 class="text-3xl mb-12 serif leading-relaxed font-bold">${q.q}</h2>
+                        <h2 class="text-2xl md:text-3xl mb-10 serif leading-relaxed font-bold">${q.q}</h2>
                         <div class="grid gap-4">
-                            ${q.options.map((opt) => `<button onclick="window.answer('${opt.type}', '${opt.text}')" class="option-btn w-full p-6 bg-white/[0.03] border border-white/5 rounded-3xl hover:bg-white/[0.08]">${opt.text}</button>`).join('')}
+                            ${q.options.map((opt) => `<button onclick="window.answer('${opt.type}', '${opt.text}')" class="option-btn w-full p-5 bg-white/[0.03] border border-white/5 rounded-2xl hover:bg-white/[0.08]">${opt.text}</button>`).join('')}
                         </div>
                     </div>
                 `;
@@ -261,140 +238,115 @@
                 const mbti = calculateMBTI();
                 const info = zodiacData[state.zodiac];
                 container.innerHTML = `
-                    <div class="max-w-5xl mx-auto glass p-12 rounded-[60px] animate-fade-in">
-                        <div class="text-center mb-16">
-                            <p class="text-[10px] text-indigo-400 tracking-[1em] mb-4 uppercase">Experiment Conclusion</p>
-                            <h1 class="text-8xl font-bold mbti-glow serif italic mb-4">${mbti}</h1>
-                            <p class="text-xl text-gray-400 font-light">${state.username}，這是你的靈魂座標位移報告</p>
+                    <div class="max-w-5xl mx-auto glass p-10 md:p-12 rounded-[50px] animate-fade-in">
+                        <div class="text-center mb-12">
+                            <h1 class="text-7xl font-bold mbti-glow serif italic mb-4">${mbti}</h1>
+                            <p class="text-lg text-gray-400 font-light">${state.username}，這是你的靈魂報告</p>
                         </div>
                         
-                        <div class="grid md:grid-cols-2 gap-8 mb-16">
-                            <div class="p-10 bg-white/5 rounded-[40px] border border-white/5 group hover:bg-white/[0.08] transition-all">
-                                <h3 class="text-indigo-300 text-lg font-bold mb-4 serif flex items-center gap-3">
-                                    <span class="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center text-sm">🌌</span> 星座核心建議
-                                </h3>
-                                <p class="text-lg leading-relaxed text-gray-200">${info.core}</p>
+                        <div class="grid md:grid-cols-2 gap-6 mb-12 text-sm md:text-base">
+                            <div class="p-8 bg-white/5 rounded-[30px] border border-white/5">
+                                <h3 class="text-indigo-300 font-bold mb-3 serif">🌌 星座核心</h3>
+                                <p class="text-gray-200">${info.core}</p>
                             </div>
-                            <div class="p-10 bg-white/5 rounded-[40px] border border-white/5 group hover:bg-white/[0.08] transition-all">
-                                <h3 class="text-pink-300 text-lg font-bold mb-4 serif flex items-center gap-3">
-                                    <span class="w-8 h-8 rounded-full bg-pink-500/20 flex items-center justify-center text-sm">❤️</span> 愛情頻率
-                                </h3>
-                                <p class="text-lg leading-relaxed text-gray-200">${info.love}</p>
+                            <div class="p-8 bg-white/5 rounded-[30px] border border-white/5">
+                                <h3 class="text-pink-300 font-bold mb-3 serif">❤️ 愛情頻率</h3>
+                                <p class="text-gray-200">${info.love}</p>
                             </div>
-                            <div class="p-10 bg-white/5 rounded-[40px] border border-white/5 group hover:bg-white/[0.08] transition-all">
-                                <h3 class="text-emerald-300 text-lg font-bold mb-4 serif flex items-center gap-3">
-                                    <span class="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-sm">🤝</span> 友情脈絡
-                                </h3>
-                                <p class="text-lg leading-relaxed text-gray-200">${info.friend}</p>
+                            <div class="p-8 bg-white/5 rounded-[30px] border border-white/5">
+                                <h3 class="text-emerald-300 font-bold mb-3 serif">🤝 友情脈絡</h3>
+                                <p class="text-gray-200">${info.friend}</p>
                             </div>
-                            <div class="p-10 bg-white/5 rounded-[40px] border border-white/5 group hover:bg-white/[0.08] transition-all">
-                                <h3 class="text-amber-300 text-lg font-bold mb-4 serif flex items-center gap-3">
-                                    <span class="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center text-sm">🚀</span> 生活軌道指南
-                                </h3>
-                                <p class="text-lg leading-relaxed text-gray-200">${info.life}</p>
+                            <div class="p-8 bg-white/5 rounded-[30px] border border-white/5">
+                                <h3 class="text-amber-300 font-bold mb-3 serif">🚀 生活指南</h3>
+                                <p class="text-gray-200">${info.life}</p>
                             </div>
                         </div>
 
-                        <!-- 準確度回饋 -->
-                        <div class="mb-16 p-10 glass border-white/10 rounded-[40px] text-center">
-                            <h3 class="text-xl font-bold serif mb-8 text-indigo-200">本次監測結果的契合度評分？</h3>
-                            <div class="flex justify-center gap-4">
-                                ${[1,2,3,4,5].map(v => `<button onclick="window.setAccuracy(${v})" class="accuracy-btn w-16 h-16 rounded-2xl border border-white/10 text-xl font-bold flex items-center justify-center ${state.accuracy === v ? 'active' : ''}">${v}</button>`).join('')}
-                            </div>
-                            <p class="text-[10px] text-gray-600 mt-6 uppercase tracking-[0.4em]">Calibrating Soul Pulse Accuracy...</p>
-                        </div>
-
-                        <!-- AI 分析區 -->
-                        <div class="mb-16 p-10 glass border-indigo-500/30 rounded-[40px]">
-                            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-                                <h3 class="text-2xl font-bold serif flex items-center gap-3">
-                                    <span class="text-indigo-400 text-3xl">✨</span> 深度靈魂共鳴分析
-                                </h3>
-                                ${state.geminiAnalysis ? `
-                                <button onclick="window.playSoulVoice()" class="text-sm bg-white/10 px-6 py-3 rounded-full hover:bg-white/20 transition-all flex items-center gap-2">
-                                    ${state.isSpeaking ? '🔊 傳遞頻率中...' : '✨ 開啟靈魂導讀'}
-                                </button>
-                                ` : ''}
-                            </div>
-                            <div id="geminiOutput" class="text-xl leading-relaxed text-indigo-100/90 min-h-[150px] flex flex-col items-center justify-center text-center">
-                                ${state.isGenerating ? '<div class="loading-pulse italic text-indigo-400">正在攔截並分析星際通訊...</div>' : 
-                                  (state.geminiAnalysis ? `<p class="whitespace-pre-wrap text-left">${state.geminiAnalysis}</p>` : 
-                                  `<button onclick="window.generateAnalysis('${mbti}')" class="px-10 py-5 bg-indigo-600/20 border border-indigo-500/40 rounded-full hover:bg-indigo-600/40 text-lg transition-all">✨ 解構靈魂：產生個人化深度分析</button>`)}
+                        <div class="mb-10 p-8 glass border-white/10 rounded-[30px] text-center">
+                            <h3 class="text-lg font-bold serif mb-6">結果精準度？</h3>
+                            <div class="flex justify-center gap-3">
+                                ${[1,2,3,4,5].map(v => `<button onclick="window.setAccuracy(${v})" class="accuracy-btn w-12 h-12 rounded-xl border border-white/10 font-bold flex items-center justify-center ${state.accuracy === v ? 'active' : ''}">${v}</button>`).join('')}
                             </div>
                         </div>
 
-                        <button id="saveBtn" class="w-full py-6 bg-white text-black rounded-3xl font-bold tracking-[0.8em] text-2xl hover:bg-gray-200 transition-all active:scale-95">同步實驗數據至星際資料庫</button>
+                        <div id="geminiOutput" class="mb-10 p-8 glass border-indigo-500/30 rounded-[30px]">
+                            ${state.isGenerating ? '<div class="loading-pulse text-center text-indigo-400 italic">分析攔截中...</div>' : 
+                              (state.geminiAnalysis ? `<p class="whitespace-pre-wrap">${state.geminiAnalysis}</p>` : 
+                              `<button onclick="window.generateAnalysis('${mbti}')" class="w-full py-4 border border-indigo-500/40 rounded-full hover:bg-indigo-600/20 transition-all">✨ 產生 AI 深度分析</button>`)}
+                        </div>
+
+                        <button id="saveBtn" class="w-full py-5 bg-white text-black rounded-3xl font-bold tracking-[0.5em] text-xl hover:bg-gray-200 transition-all">同步至星際資料庫</button>
                     </div>
                 `;
                 document.getElementById('saveBtn').onclick = () => saveResult(mbti);
             }
         }
 
-        window.startQuiz = () => { if(state.username && state.zodiac !== '未設定'){ state.view = 'quiz'; render(); } else { alert("請輸入暱稱並選擇星座！"); }};
-        window.answer = (type, text) => { 
-            state.scores[type]++; state.answers.push(text);
-            if(state.currentQ+1 < questions.length){ state.currentQ++; render(); } 
-            else { state.view = 'result'; render(); }
+        window.startQuiz = () => {
+            if(state.username.trim() === '' || state.zodiac === '未設定') {
+                alert("請填寫暱稱並選擇星座。");
+                return;
+            }
+            state.view = 'quiz'; 
+            render();
         };
+
+        window.answer = (type, text) => { 
+            state.scores[type]++; 
+            state.answers.push(text);
+            if(state.currentQ + 1 < questions.length) {
+                state.currentQ++; 
+                render();
+            } else {
+                state.view = 'result'; 
+                render();
+            }
+        };
+
         window.setAccuracy = (val) => { state.accuracy = val; render(); };
 
         window.generateAnalysis = async (mbti) => {
             state.isGenerating = true; render();
-            const prompt = `你是最頂尖的星際占星學家與心理分析師。針對受測者「${state.zodiac}」且MBTI類型為「${mbti}」，撰寫一段250字左右、語氣溫暖、具備文學深度、深奧且充滿啟發性的靈魂分析。開頭必須是「在時空的交會點，我感測到了你的靈魂波段...」，請使用繁體中文。請針對其人格的內在矛盾與潛力進行剖析。`;
-            try { state.geminiAnalysis = await fetchGemini(prompt); } 
-            catch (e) { state.geminiAnalysis = "星際網路波動，通訊暫時中斷。"; }
+            const prompt = `你是占星學與心理分析師。針對受測者「${state.zodiac}」且MBTI類型為「${mbti}」，撰寫一段200字溫暖啟發性的分析。開頭為「在時空的交會點...」，繁體中文。`;
+            try {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+                const response = await fetch(url, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+                const result = await response.json();
+                state.geminiAnalysis = result.candidates?.[0]?.content?.parts?.[0]?.text;
+            } catch (e) {
+                state.geminiAnalysis = "星際連線異常，請稍後重試。";
+            }
             state.isGenerating = false; render();
-        };
-
-        window.playSoulVoice = async () => {
-            if (state.isSpeaking || !state.geminiAnalysis) return;
-            state.isSpeaking = true; render();
-            const url = await generateTTS(state.geminiAnalysis);
-            if (url) {
-                const audio = new Audio(url);
-                audio.onended = () => { state.isSpeaking = false; render(); };
-                audio.play();
-            } else { state.isSpeaking = false; render(); }
         };
 
         function calculateMBTI() {
             const { E, I, S, N, T, F, J, P } = state.scores;
-            let res = "";
-            res += (E >= I ? "E" : "I");
-            res += (S >= N ? "S" : "N");
-            res += (T >= F ? "T" : "F");
-            res += (J >= P ? "J" : "P");
-            return res;
+            return (E >= I ? "E" : "I") + (S >= N ? "S" : "N") + (T >= F ? "T" : "F") + (J >= P ? "J" : "P");
         }
 
         async function saveResult(mbti) {
-            if (state.isSaving) return;
-            if (state.accuracy === 0) { alert("請先評分結果的精準度！"); return; }
+            if (state.isSaving || state.accuracy === 0) return;
             state.isSaving = true;
             const btn = document.getElementById('saveBtn');
-            btn.innerText = "數據上傳中...";
-
-            const payload = {
-                account: state.username,
-                mbti_zodiac: `${mbti} (${state.zodiac})`,
-                accuracy_score: state.accuracy,
-                ai_report: state.geminiAnalysis || "未生成分析"
-            };
+            btn.innerText = "同步中...";
 
             try {
                 if (state.user) {
                     await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'labRecords'), {
-                        ...payload, timestamp: serverTimestamp()
+                        nickname: state.username,
+                        type: `${mbti} (${state.zodiac})`,
+                        accuracy: state.accuracy,
+                        timestamp: serverTimestamp()
                     });
                 }
-                // 同步至 Google Sheet (可選)
-                await fetch("https://script.google.com/macros/s/AKfycbzsffAQD5mEX_8hXcxLECHzaceLhKlrDQA6RbeFH88LpSicUDIeEh9mJCumyFU3EYYt7A/exec", { 
-                    method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) 
-                });
-                btn.innerText = "數據同步成功";
+                btn.innerText = "同步成功";
                 btn.classList.add('bg-emerald-500', 'text-white');
             } catch (e) {
-                btn.innerText = "同步失敗，稍後再試";
+                btn.innerText = "同步失敗";
                 state.isSaving = false;
             }
         }
