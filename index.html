@@ -9,56 +9,101 @@
     <style>
         body {
             font-family: 'Noto Sans TC', sans-serif;
-            background-color: #050810;
-            color: white;
-            overflow-x: hidden;
+            /* 使用莫蘭迪藍灰色漸層，完全避開純白 */
+            background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
+            color: #334155;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+            margin: 0;
         }
         .serif { font-family: 'Noto Serif TC', serif; }
+        
         .glass {
-            background: rgba(255, 255, 255, 0.03);
-            backdrop-filter: blur(25px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+            /* 卡片底色改為淡雅的藍色調 */
+            background: rgba(238, 242, 255, 0.85);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(148, 163, 184, 0.4);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.1);
+            border-radius: 3rem;
+            width: 100%;
+            max-width: 56rem;
         }
+
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
+            from { opacity: 0; transform: translateY(15px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        .animate-fade-in { animation: fadeIn 0.6s ease-out forwards; }
+        .animate-fade-in { animation: fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
         
         .mbti-glow {
-            background: linear-gradient(135deg, #818cf8 0%, #c084fc 100%);
+            background: linear-gradient(135deg, #4338ca 0%, #7e22ce 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            filter: drop-shadow(0 0 15px rgba(129, 140, 248, 0.4));
         }
 
         .option-btn {
-            transition: all 0.2s ease;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             text-align: left;
-            font-size: 1.25rem; /* 進一步加大字體 */
+            font-size: 1.25rem;
+            color: #475569;
+            background: rgba(255, 255, 255, 0.5);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            padding: 1.5rem;
+            border-radius: 1.5rem;
         }
         .option-btn:hover {
-            background: rgba(99, 102, 241, 0.15);
-            border-color: rgba(99, 102, 241, 0.5);
-            transform: translateX(8px);
+            background: #e0e7ff;
+            border-color: #818cf8;
+            transform: scale(1.02);
+            color: #312e81;
         }
 
+        .accuracy-btn {
+            background: rgba(255, 255, 255, 0.5);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            color: #64748b;
+            flex: 1;
+            padding: 1.5rem 0;
+            border-radius: 1.5rem;
+            font-size: 1.875rem;
+            font-weight: 700;
+            transition: all 0.2s;
+        }
         .accuracy-btn.active {
-            background-color: #4f46e5;
-            border-color: #6366f1;
-            box-shadow: 0 0 15px rgba(99, 102, 241, 0.4);
+            background-color: #4338ca;
+            color: white;
+            border-color: #4338ca;
+            box-shadow: 0 10px 15px -3px rgba(67, 56, 202, 0.3);
         }
 
-        .card-content {
-            font-size: 1.15rem;
-            line-height: 1.8;
+        input, select {
+            background: rgba(255, 255, 255, 0.7) !important;
+            border: 1px solid rgba(148, 163, 184, 0.3) !important;
+            color: #1e293b !important;
+            border-radius: 1.5rem;
+            padding: 1.25rem 2rem;
+            width: 100%;
+            font-size: 1.25rem;
+            outline: none;
+            transition: ring 0.2s;
+        }
+        input:focus { border-color: #818cf8 !important; }
+        
+        .progress-container {
+            height: 0.5rem;
+            background: rgba(148, 163, 184, 0.2);
+            border-radius: 9999px;
+            overflow: hidden;
+            width: 8rem;
         }
     </style>
 </head>
-<body class="min-h-screen flex items-center justify-center p-4">
+<body>
 
-    <div id="app" class="w-full max-w-5xl z-10 opacity-0 transition-opacity duration-500"></div>
+    <div id="app" class="opacity-0 transition-opacity duration-700"></div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -66,7 +111,6 @@
         import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const firebaseConfig = { apiKey: "", authDomain: "", projectId: "", storageBucket: "", messagingSenderId: "", appId: "" };
-        // 請務必替換成你部署後的 GAS 網址
         const GAS_URL = "https://script.google.com/macros/s/AKfycbzsffAQD5mEX_8hXcxLECHzaceLhKlrDQA6RbeFH88LpSicUDIeEh9mJCumyFU3EYYt7A/exec";
         
         let db = null;
@@ -78,19 +122,8 @@
             zodiac: '未設定',
             currentQ: 0,
             scores: { E: 0, I: 0, S: 0, N: 0, T: 0, F: 0, J: 0, P: 0 },
-            answersProcess: [], // 紀錄作答過程
+            answersProcess: [],
             accuracy: 0
-        };
-
-        const initFirebase = async () => {
-            if (firebaseConfig.apiKey) {
-                try {
-                    const app = initializeApp(firebaseConfig);
-                    auth = getAuth(app);
-                    db = getFirestore(app);
-                    await signInAnonymously(auth);
-                } catch (e) { console.log("Firebase disabled."); }
-            }
         };
 
         const questions = [
@@ -137,18 +170,16 @@
 
             if (state.view === 'start') {
                 container.innerHTML = `
-                    <div class="max-w-xl mx-auto glass p-12 rounded-[40px] text-center animate-fade-in">
+                    <div class="glass p-12 text-center animate-fade-in">
                         <h1 class="text-4xl md:text-5xl font-bold tracking-[0.2em] mb-4 serif mbti-glow">異星座標</h1>
-                        <p class="text-gray-400 mb-10 tracking-[0.3em] font-light italic">靈魂導航實驗室</p>
-                        <div class="space-y-6">
-                            <input id="uIn" placeholder="輸入你的暱稱" value="${state.username}" class="w-full bg-white/5 border border-white/10 rounded-3xl py-5 px-8 text-center text-white text-xl outline-none focus:border-indigo-500 transition-all">
-                            <div class="relative">
-                                <select id="zIn" class="w-full bg-white/5 border border-white/10 rounded-3xl py-5 px-8 text-center text-gray-400 text-xl outline-none appearance-none focus:border-indigo-500">
-                                    <option value="未設定">選擇星座標籤</option>
-                                    ${["牡羊座", "金牛座", "雙子座", "巨蟹座", "獅子座", "處女座", "天秤座", "天蠍座", "射手座", "摩羯座", "水瓶座", "雙魚座"].map(z => `<option value="${z}" ${state.zodiac === z ? 'selected' : ''}>${z}</option>`).join('')}
-                                </select>
-                            </div>
-                            <button onclick="window.startQuiz()" class="w-full py-6 bg-indigo-600 rounded-[30px] font-bold tracking-[0.5em] text-2xl hover:bg-indigo-500 hover:shadow-2xl hover:shadow-indigo-500/20 transition-all">開啟監測實驗</button>
+                        <p class="text-slate-600 mb-10 tracking-[0.3em] font-light italic">靈魂導航實驗室</p>
+                        <div class="space-y-6 max-w-md mx-auto">
+                            <input id="uIn" placeholder="輸入你的暱稱" value="${state.username}">
+                            <select id="zIn">
+                                <option value="未設定">選擇星座標籤</option>
+                                ${["牡羊座", "金牛座", "雙子座", "巨蟹座", "獅子座", "處女座", "天秤座", "天蠍座", "射手座", "摩羯座", "水瓶座", "雙魚座"].map(z => `<option value="${z}" ${state.zodiac === z ? 'selected' : ''}>${z}</option>`).join('')}
+                            </select>
+                            <button onclick="window.startQuiz()" class="w-full py-6 bg-indigo-700 text-white rounded-[2rem] font-bold tracking-[0.5em] text-2xl shadow-xl shadow-indigo-200 hover:bg-indigo-800 transition-all mt-4">開啟監測實驗</button>
                         </div>
                     </div>
                 `;
@@ -157,16 +188,16 @@
             } else if (state.view === 'quiz') {
                 const q = questions[state.currentQ];
                 container.innerHTML = `
-                    <div class="max-w-3xl mx-auto glass p-10 md:p-14 rounded-[40px] animate-fade-in">
-                        <div class="mb-10 flex justify-between items-end">
-                            <div class="text-2xl font-bold serif text-indigo-400 tracking-wider">系統掃描：${state.currentQ + 1} / ${questions.length}</div>
-                            <div class="h-2 w-32 bg-white/10 rounded-full overflow-hidden">
-                                <div class="h-full bg-indigo-500" style="width: ${(state.currentQ+1)/questions.length*100}%"></div>
+                    <div class="glass p-10 md:p-14 animate-fade-in">
+                        <div class="mb-10 flex justify-between items-center">
+                            <div class="text-2xl font-bold serif text-indigo-700 tracking-wider">系統掃描：${state.currentQ + 1} / ${questions.length}</div>
+                            <div class="progress-container">
+                                <div class="h-full bg-indigo-600 transition-all duration-300" style="width: ${(state.currentQ+1)/questions.length*100}%"></div>
                             </div>
                         </div>
-                        <h2 class="text-3xl mb-12 serif leading-relaxed font-bold">${q.q}</h2>
-                        <div class="grid gap-6">
-                            ${q.options.map((o, idx) => `<button onclick="window.answer('${o.type}', ${idx})" class="option-btn w-full p-6 bg-white/[0.03] border border-white/5 rounded-3xl hover:bg-white/[0.08] leading-snug">${o.text}</button>`).join('')}
+                        <h2 class="text-3xl mb-12 serif leading-relaxed font-bold text-slate-800">${q.q}</h2>
+                        <div class="grid gap-5">
+                            ${q.options.map((o, idx) => `<button onclick="window.answer('${o.type}', ${idx})" class="option-btn">${o.text}</button>`).join('')}
                         </div>
                     </div>
                 `;
@@ -175,47 +206,47 @@
                 const advice = zodiacAdvice[state.zodiac] || { core: "", love: "", friend: "", life: "" };
                 container.innerHTML = `
                     <div class="max-w-4xl mx-auto space-y-8 animate-fade-in pb-20">
-                        <div class="glass p-12 rounded-[50px] text-center">
-                            <h1 class="text-8xl font-bold mbti-glow serif italic mb-6">${mbti}</h1>
-                            <p class="text-2xl text-gray-400 mb-2">${state.username} · ${state.zodiac}</p>
-                            <div class="inline-block px-4 py-1 bg-white/10 rounded-full text-xs tracking-widest text-indigo-300 uppercase">ASTRAL COORDINATES COMPLETED</div>
+                        <div class="glass p-12 text-center">
+                            <h1 class="text-8xl font-bold mbti-glow serif italic mb-6 tracking-tight">${mbti}</h1>
+                            <p class="text-2xl text-slate-700 mb-2 font-medium">${state.username} · ${state.zodiac}</p>
+                            <div class="inline-block px-5 py-1.5 bg-indigo-100/50 rounded-full text-xs tracking-widest text-indigo-700 font-bold uppercase border border-indigo-200">ASTRAL COORDINATES COMPLETED</div>
                         </div>
 
                         <div class="grid md:grid-cols-2 gap-8">
-                            <div class="glass p-10 rounded-[40px] space-y-6">
-                                <h3 class="text-2xl font-bold serif text-indigo-400 flex items-center">
+                            <div class="glass p-10 space-y-6">
+                                <h3 class="text-2xl font-bold serif text-indigo-800 flex items-center">
                                     <span class="mr-3">🪐</span> 星座核心建議
                                 </h3>
-                                <p class="card-content text-gray-200">${advice.core}</p>
-                                <div class="pt-4 space-y-6">
-                                    <div>
-                                        <h4 class="text-lg font-bold text-pink-400 mb-2">💘 愛情導航</h4>
-                                        <p class="text-gray-400 card-content">${advice.love}</p>
+                                <p class="text-lg leading-relaxed text-slate-700">${advice.core}</p>
+                                <div class="pt-4 space-y-4">
+                                    <div class="bg-rose-50/50 p-5 rounded-3xl border border-rose-100">
+                                        <h4 class="text-lg font-bold text-rose-600 mb-1">💘 愛情導航</h4>
+                                        <p class="text-slate-600 text-base">${advice.love}</p>
                                     </div>
-                                    <div>
-                                        <h4 class="text-lg font-bold text-blue-400 mb-2">🤝 友情引力</h4>
-                                        <p class="text-gray-400 card-content">${advice.friend}</p>
+                                    <div class="bg-blue-50/50 p-5 rounded-3xl border border-blue-100">
+                                        <h4 class="text-lg font-bold text-blue-700 mb-1">🤝 友情引力</h4>
+                                        <p class="text-slate-600 text-base">${advice.friend}</p>
                                     </div>
-                                    <div>
-                                        <h4 class="text-lg font-bold text-green-400 mb-2">🌿 生活校準</h4>
-                                        <p class="text-gray-400 card-content">${advice.life}</p>
+                                    <div class="bg-emerald-50/50 p-5 rounded-3xl border border-emerald-100">
+                                        <h4 class="text-lg font-bold text-emerald-700 mb-1">🌿 生活校準</h4>
+                                        <p class="text-slate-600 text-base">${advice.life}</p>
                                     </div>
                                 </div>
                             </div>
 
-                            <div class="glass p-10 rounded-[40px] flex flex-col justify-between">
+                            <div class="glass p-10 flex flex-col justify-between">
                                 <div>
-                                    <h3 class="text-2xl font-bold serif text-indigo-400 mb-8">本次實驗精準度？</h3>
-                                    <div class="flex justify-between gap-2 mb-10">
+                                    <h3 class="text-2xl font-bold serif text-indigo-800 mb-8">本次實驗精準度？</h3>
+                                    <div class="flex justify-between gap-3 mb-10">
                                         ${[1,2,3,4,5].map(v => `
-                                            <button onclick="window.setAccuracy(${v})" class="accuracy-btn flex-1 py-6 rounded-2xl border border-white/10 text-2xl font-bold transition-all ${state.accuracy === v ? 'active' : 'bg-white/5'}">
+                                            <button onclick="window.setAccuracy(${v})" class="accuracy-btn ${state.accuracy === v ? 'active' : ''}">
                                                 ${v}
                                             </button>
                                         `).join('')}
                                     </div>
-                                    <p class="text-gray-500 text-center italic">1 分為偏差極大，5 分為完美契合</p>
+                                    <p class="text-slate-500 text-center italic font-light">1 分為偏差極大，5 分為完美契合</p>
                                 </div>
-                                <button id="saveBtn" onclick="window.saveAll('${mbti}')" class="w-full py-6 bg-white text-black rounded-[30px] font-bold tracking-[0.5em] text-xl hover:bg-gray-200 transition-all mt-10">同步星際資料庫</button>
+                                <button id="saveBtn" onclick="window.saveAll('${mbti}')" class="w-full py-6 bg-slate-800 text-white rounded-[2rem] font-bold tracking-[0.5em] text-xl hover:bg-slate-900 shadow-xl transition-all mt-10">同步星際資料庫</button>
                             </div>
                         </div>
                     </div>
@@ -227,7 +258,6 @@
         
         window.answer = (type, optionIdx) => { 
             state.scores[type]++;
-            // 儲存格式範例: Q1-選項1
             state.answersProcess.push(`Q${state.currentQ + 1}-選項${optionIdx + 1}`);
             
             if(state.currentQ + 1 < questions.length) { 
@@ -247,36 +277,24 @@
             btn.innerText = "同步中...";
             btn.disabled = true;
 
-            // 匹配你的 GAS 後端欄位名稱
             const payload = {
-                account: state.username,                      // 對應 data.account (帳號)
-                process: state.answersProcess.join(', '),      // 對應 data.process (作答過程)
-                mbti: `${mbti} (${state.zodiac})`,            // 對應 data.mbti (分析結果)
-                score: state.accuracy                         // 對應 data.score (分數)
+                account: state.username,
+                process: state.answersProcess.join(', '),
+                mbti: `${mbti} (${state.zodiac})`,
+                score: state.accuracy
             };
 
             try {
-                // Firebase 儲存 (如果已配置 apiKey)
-                if (db) { 
-                    await addDoc(collection(db, 'artifacts', 'astral-coor', 'public', 'data', 'records'), { 
-                        ...payload, 
-                        createdAt: serverTimestamp() 
-                    }); 
-                }
-
-                // GAS 同步
-                const response = await fetch(GAS_URL, {
+                await fetch(GAS_URL, {
                     method: 'POST',
                     body: JSON.stringify(payload),
-                    mode: 'no-cors' // 注意: no-cors 無法讀取 response body，但可成功送出
+                    mode: 'no-cors'
                 });
-
                 btn.innerText = "同步成功";
-                btn.classList.add('bg-green-500', 'text-white');
+                btn.style.backgroundColor = "#059669";
             } catch (e) {
-                console.error("Save error:", e);
-                btn.innerText = "同步成功 (GAS)"; // no-cors 常觸發 catch 但其實已送出
-                btn.classList.add('bg-green-500', 'text-white');
+                btn.innerText = "同步失敗 (請稍後再試)";
+                btn.disabled = false;
             }
         };
 
@@ -285,10 +303,7 @@
             return (E >= I ? "E" : "I") + (S >= N ? "S" : "N") + (T >= F ? "T" : "F") + (J >= P ? "J" : "P");
         }
 
-        window.onload = async () => {
-            await initFirebase();
-            render();
-        };
+        window.onload = () => { render(); };
     </script>
 </body>
 </html>
